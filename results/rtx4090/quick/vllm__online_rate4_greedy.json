@@ -1,0 +1,82 @@
+{
+  "system": "vllm",
+  "workload": "online_rate4_greedy",
+  "workload_settings": {
+    "kind": "online",
+    "rate": 4.0,
+    "sampling": "greedy",
+    "batch_size": 32
+  },
+  "num_requests": 50,
+  "duration_s": 23.381119653582573,
+  "prompt_tokens": 19280,
+  "output_tokens": 14272,
+  "request_throughput_rps": 2.1384775725374103,
+  "output_throughput_tok_s": 610.4070383050785,
+  "decode_throughput_tok_s": 311.2634967389862,
+  "ttft_ms": {
+    "count": 50,
+    "mean": 82.1030443161726,
+    "p50": 74.93353076279163,
+    "p90": 129.54343520104885,
+    "p95": 156.78502488881347,
+    "p99": 175.18417507410044,
+    "min": 23.489907383918762,
+    "max": 187.19980493187904,
+    "std": 35.873188638029376
+  },
+  "itl_ms": {
+    "count": 14222,
+    "mean": 20.422431909468855,
+    "p50": 19.354796037077904,
+    "p90": 20.731662958860397,
+    "p95": 33.66729393601417,
+    "p99": 65.80750096589327,
+    "min": 4.5548416674137115,
+    "max": 139.70104604959488,
+    "std": 8.372979177815498
+  },
+  "tpot_ms": {
+    "count": 50,
+    "mean": 20.589217573843495,
+    "p50": 20.608771252574467,
+    "p90": 22.10612718075041,
+    "p95": 22.859719401504112,
+    "p99": 24.43078371799654,
+    "min": 17.195978564241848,
+    "max": 25.660643974939983,
+    "std": 1.479096594410445
+  },
+  "e2e_latency_ms": {
+    "count": 50,
+    "mean": 5891.0595766454935,
+    "p50": 6150.90143121779,
+    "p90": 10687.889610603452,
+    "p95": 10820.027764700353,
+    "p99": 10957.294461838901,
+    "min": 1202.7227953076363,
+    "max": 10983.958128839731,
+    "std": 3397.8927551086736
+  },
+  "memory": {
+    "peak_device_used_bytes": 22894870528
+  },
+  "speculative": {
+    "enabled": false,
+    "acceptance_rate": 0.0
+  },
+  "tag": "vllm",
+  "vllm_settings": {
+    "model": "NousResearch/Meta-Llama-3.1-8B-Instruct",
+    "workload": [
+      "/workspace/wl-quick/online_rate4_greedy.json"
+    ],
+    "out": "/workspace/runs/quick/results",
+    "quantization": null,
+    "max_num_seqs": 32,
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "tag": null
+  }
+}

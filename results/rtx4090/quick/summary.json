@@ -1,0 +1,150 @@
+{
+  "comparisons": {
+    "redline_fp16__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 1.1771424450707961,
+      "decode_speedup_min": 1.1602108037030299,
+      "decode_speedup_max": 1.2148469201243774,
+      "peak_vram_reduction_mean": 0.013221527092155488
+    },
+    "redline_fp16__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.9808085800856325,
+      "decode_speedup_min": 0.9698867808995927,
+      "decode_speedup_max": 0.9917443500813186,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_fp16__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.37748699681760206,
+      "decode_speedup_min": 0.35872418322891386,
+      "decode_speedup_max": 0.4321711702313838,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_fp16_nograph_sync__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 1.1610102166268284,
+      "decode_speedup_min": 1.1424251699936188,
+      "decode_speedup_max": 1.1987284122312063,
+      "peak_vram_reduction_mean": 0.013796172731818157
+    },
+    "redline_fp16_nograph_sync__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.9673670224049955,
+      "decode_speedup_min": 0.9539948686667624,
+      "decode_speedup_max": 0.9804150259628052,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_fp16_nograph_sync__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.37231370067762415,
+      "decode_speedup_min": 0.35379710772364786,
+      "decode_speedup_max": 0.4250899042092751,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.813203754845452,
+      "decode_speedup_min": 2.1038692774030743,
+      "decode_speedup_max": 3.42117688212094,
+      "peak_vram_reduction_mean": 0.6163603718802736
+    },
+    "redline_int4__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.3439936193241184,
+      "decode_speedup_min": 1.7568594842841159,
+      "decode_speedup_max": 2.89281334113446,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.9021404684704435,
+      "decode_speedup_min": 0.7732238007390063,
+      "decode_speedup_max": 1.0555683306071928,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_spec__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.7678266552617536,
+      "decode_speedup_min": 1.5584936070385234,
+      "decode_speedup_max": 4.481172191438677,
+      "peak_vram_reduction_mean": 0.5241326887698472
+    },
+    "redline_int4_spec__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.3061848997443777,
+      "decode_speedup_min": 1.3014374534246387,
+      "decode_speedup_max": 3.7730838442093955,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_spec__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.8875889032644896,
+      "decode_speedup_min": 0.5799066017868585,
+      "decode_speedup_max": 1.3855282412052266,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.0845010117783325,
+      "decode_speedup_min": 1.8647908221446103,
+      "decode_speedup_max": 2.18210831280888,
+      "peak_vram_reduction_mean": 0.43338830357424596
+    },
+    "redline_int8__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 1.7368301398956094,
+      "decode_speedup_min": 1.5572143560814302,
+      "decode_speedup_max": 1.8298712575309102,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.6684594800692377,
+      "decode_speedup_min": 0.6501006627956744,
+      "decode_speedup_max": 0.693878052389388,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8_kvint8__vs__hf_fp16": {
+      "workloads": 4,
+      "decode_speedup_geomean": 2.0468125265439254,
+      "decode_speedup_min": 1.826570613103005,
+      "decode_speedup_max": 2.15122927689336,
+      "peak_vram_reduction_mean": 0.45419660161804076
+    },
+    "redline_int8_kvint8__vs__vllm": {
+      "workloads": 4,
+      "decode_speedup_geomean": 1.7054276619345718,
+      "decode_speedup_min": 1.5252981446193998,
+      "decode_speedup_max": 1.7991302166069751,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8_kvint8__vs__vllm_awq_int4": {
+      "workloads": 4,
+      "decode_speedup_geomean": 0.656373505967025,
+      "decode_speedup_min": 0.6409010820061533,
+      "decode_speedup_max": 0.6796565301163405,
+      "peak_vram_reduction_mean": null
+    }
+  },
+  "quality": {
+    "/root/models/l8b-int8.rlm": {
+      "per_task": {
+        "wikitext": 0.9999932609520688,
+        "hellaswag": 1.0057142857142858,
+        "arc_easy": 1.0,
+        "arc_challenge": 0.9772727272727273
+      },
+      "mean": 0.9957450684847704
+    },
+    "/root/models/l8b-int4.rlm": {
+      "per_task": {
+        "wikitext": 0.8941186759842361,
+        "hellaswag": 0.9714285714285715,
+        "arc_easy": 0.9396984924623115,
+        "arc_challenge": 0.9848484848484849
+      },
+      "mean": 0.947523556180901
+    }
+  }
+}

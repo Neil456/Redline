@@ -53,20 +53,33 @@ from the source at build time (`python demo/build_demo.py [--trace trace.json]`)
 
 ## Results
 
-**No performance numbers are checked in.** I developed this repository on a
-machine without a GPU, so every number has to come from running the suite on
-your hardware:
+Measured on an RTX 4090 (Runpod, 2026-10-14) with Llama 3.1 8B Instruct as the target and Llama 3.2 1B
+Instruct as the draft. The baselines are Hugging Face Transformers and vLLM 0.31 on the same workload
+files. The full write-up, with methodology, every table and the raw JSON, is in
+[`results/rtx4090/`](results/rtx4090/README.md).
 
-```bash
-scripts/run_rtx4090.sh            # full grid; QUICK=1 for a smoke run
-```
+| | decode tok/s, batch 1 | decode tok/s, batch 8 | vs HF FP16 (decode, geomean)* | peak VRAM vs HF FP16 | quality retention |
+|---|---:|---:|---:|---:|---:|
+| HF Transformers FP16 | 50 | 364 | – | – | 100% (reference) |
+| vLLM FP16 | 60 | 459 | +24% | (preallocated) | – |
+| vLLM AWQ INT4 (Marlin) | 164 | 1181 | +206% | (preallocated) | – |
+| **Redline FP16** | 58 | 439 | +20% | −1% | – |
+| **Redline INT8 (W8A16)** | 108 | 758 | **+81%** | **−43%** | **99.6%** |
+| **Redline INT4 (W4A16, g128)** | **169** | 883 | +119% | −62% | 94.8% |
 
-That command builds, converts FP16/INT8/INT4 Llama-3.1-8B (+ an INT4
-Llama-3.2-1B draft), generates the workload suite, runs six Redline
-configurations plus HF and vLLM, evaluates quality, and writes
-`runs/<timestamp>/REPORT.md`. `REPORT.md` has the headline comparison table
-(geomean decode speedup and mean peak-VRAM reduction vs each baseline, quality
-retention) and a table for every workload.
+\* Geometric mean over the batch-1–32 sweep (512 in / 256 out). Peak VRAM and quality come from the
+WikiText-prompt suite and from WikiText-2 / HellaSwag / ARC.
+
+- At batch 1, decode runs at 89% (FP16), 82% (INT8) and 73% (INT4) of the RTX 4090's memory bandwidth.
+  Redline's INT4 GEMV is 3–4% faster than vLLM's Marlin kernel at batch 1–4.
+- FP16 decode is on par with vLLM (−3% geomean). At batch 8 and above, Marlin's tensor-core INT4 GEMM wins
+  clearly, and vLLM's prefill is about 4× faster at large batches. Both are listed under Limitations.
+- All 24 GPU tests pass on the 4090. On a real 1B checkpoint, Redline FP16 reproduces Transformers'
+  greedy output token for token, and on 8B the log-probabilities agree to 0.0024 (mean |Δ|).
+
+Reproduce everything with `scripts/run_rtx4090.sh` (or `QUICK=1` for the small grid). It builds the
+engine, converts the checkpoints, runs every Redline configuration and both baselines, evaluates quality,
+and writes `runs/<timestamp>/REPORT.md`.
 
 ## Build
 
@@ -193,8 +206,11 @@ docs/          WALKTHROUGH.md (interview talk track and file map)
 * Speculative decoding runs synchronously: the accepted count is needed before
   the next step is planned. The draft rounds are graph-captured, the
   verification pass runs eagerly.
-* Prefill attention uses CUDA cores (tiled, O(L) memory). For prompts beyond a
-  few thousand tokens a tensor-core flash-attention kernel would be faster.
-* INT4 batched GEMMs use dequantize + cuBLASLt unless the TensorRT-LLM backend
-  is built. The TensorRT-LLM adapter compiles against the v0.16 headers but
-  needs `libtensorrt_llm.so` to link.
+* Prefill attention uses CUDA cores (tiled, O(L) memory). A tensor-core flash-attention kernel is the
+  main missing piece for TTFT.
+* INT4 decode beyond batch 8 runs the W4A16 GEMV on CUDA cores (16 rows per pass) and stops scaling: at
+  batch 32 it is 3× slower than vLLM's Marlin tensor-core kernel (measured, see `results/rtx4090`).
+  Larger INT4 GEMMs use dequantize + cuBLASLt unless the TensorRT-LLM backend is built. The TensorRT-LLM
+  adapter compiles against the v0.16 headers but needs `libtensorrt_llm.so` to link, and it has not been
+  benchmarked.
+* Prefill is about 4× slower than vLLM at batch 32 × 512 tokens (TTFT 1.0 s vs 0.23 s).

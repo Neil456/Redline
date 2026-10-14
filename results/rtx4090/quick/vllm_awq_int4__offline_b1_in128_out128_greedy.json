@@ -1,0 +1,87 @@
+{
+  "system": "vllm",
+  "workload": "offline_b1_in128_out128_greedy",
+  "workload_settings": {
+    "kind": "offline",
+    "batch_size": 1,
+    "prompt_len": 128,
+    "output_len": 128,
+    "sampling": "greedy"
+  },
+  "num_requests": 2,
+  "duration_s": 1.5787309110164642,
+  "prompt_tokens": 256,
+  "output_tokens": 256,
+  "request_throughput_rps": 1.266840337415261,
+  "output_throughput_tok_s": 162.1555631891534,
+  "decode_throughput_tok_s": 164.4065380934825,
+  "ttft_ms": {
+    "count": 2,
+    "mean": 16.930243000388145,
+    "p50": 16.930243000388145,
+    "p90": 22.462378069758415,
+    "p95": 23.1538949534297,
+    "p99": 23.707108460366726,
+    "min": 10.015074163675308,
+    "max": 23.845411837100983,
+    "std": 6.915168836712837
+  },
+  "itl_ms": {
+    "count": 254,
+    "mean": 6.081282432506404,
+    "p50": 6.076589226722717,
+    "p90": 6.258290633559227,
+    "p95": 6.3024744391441345,
+    "p99": 6.603032350540161,
+    "min": 5.006168037652969,
+    "max": 6.829176098108292,
+    "std": 0.17379022576701028
+  },
+  "tpot_ms": {
+    "count": 2,
+    "mean": 6.081282432506404,
+    "p50": 6.081282432506404,
+    "p90": 6.0822430176763085,
+    "p95": 6.082363090822546,
+    "p99": 6.082459149339536,
+    "min": 6.080081701044023,
+    "max": 6.082483163968784,
+    "std": 0.0012007314623807552
+  },
+  "e2e_latency_ms": {
+    "count": 2,
+    "mean": 789.2531119287014,
+    "p50": 789.2531119287014,
+    "p90": 794.9072413146496,
+    "p95": 795.6140074878931,
+    "p99": 796.1794204264879,
+    "min": 782.1854501962662,
+    "max": 796.3207736611366,
+    "std": 7.067661732435226
+  },
+  "memory": {
+    "peak_device_used_bytes": 23456907264
+  },
+  "speculative": {
+    "enabled": false,
+    "acceptance_rate": 0.0
+  },
+  "tag": "vllm_awq_int4",
+  "vllm_settings": {
+    "model": "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
+    "workload": [
+      "/workspace/wl-quick/offline_b1_in128_out128_greedy.json",
+      "/workspace/wl-quick/offline_b1_in1024_out128_greedy.json",
+      "/workspace/wl-quick/offline_b8_in128_out128_greedy.json",
+      "/workspace/wl-quick/offline_b8_in1024_out128_greedy.json",
+      "/workspace/wl-quick/online_rate4_greedy.json"
+    ],
+    "out": "/workspace/runs/quick/results",
+    "quantization": null,
+    "max_num_seqs": 32,
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "tag": "vllm_awq_int4"
+  }
+}

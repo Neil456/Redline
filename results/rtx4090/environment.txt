@@ -1,0 +1,4 @@
+NVIDIA GeForce RTX 4090, 580.126.20, 24564 MiB, 450.00 W
+vllm 0.31.0 torch 2.13.0+cu130
+hf transformers 5.19.0 torch 2.8.0+cu128
+Build cuda_12.8.r12.8/compiler.35583870_0

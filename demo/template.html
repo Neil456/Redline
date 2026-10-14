@@ -188,6 +188,12 @@ pre.src .l::before { counter-increment: ln; content: counter(ln); display: inlin
 .empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 10px; color: var(--ink-2); }
 .empty pre { margin: 0; font: 12.5px var(--f-mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow-x: auto; }
 .charts { display: grid; gap: 18px; }
+table.mini { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+table.mini th { text-align: right; font-weight: 600; color: var(--muted); font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.mini td { text-align: right; padding: 5px 6px; border-bottom: 1px solid var(--grid); color: var(--ink-2); }
+table.mini th:first-child, table.mini td:first-child { text-align: left; }
+ul.findings { margin: 16px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; line-height: 1.55; max-width: 90ch; }
+ul.findings li { margin: 4px 0; }
 .chart h3 { font-size: 0.95rem; margin-bottom: 4px; }
 .chart .sub { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
@@ -367,7 +373,8 @@ footer { padding-block: 40px 30px; color: var(--muted); font-size: 12.5px; borde
 
     <!-- 6. Trace -->
     <section class="panel" id="trace">
-      <div class="sec-head"><span class="sec-num">06</span><h2>Real run: a trace from redline_bench</h2></div>
+      <div class="sec-head"><span class="sec-num">06</span><h2>Measured on an RTX 4090: results and engine traces</h2></div>
+      <div class="card" id="results-root" style="margin-bottom:16px"></div>
       <div class="card" id="trace-root"></div>
     </section>
 
@@ -389,7 +396,8 @@ footer { padding-block: 40px 30px; color: var(--muted); font-size: 12.5px; borde
 
 <script>
 const EXCERPTS = /*__EXCERPTS__*/null;
-const TRACE_EMBEDDED = /*__TRACE__*/null;
+const TRACE_EMBEDDED = /*__TRACE__*/null;   // [{label, note, trace}] (or a bare trace)
+const RESULTS = /*__RESULTS__*/null;
 
 // ------------------------------------------------------------------ utils
 const $ = (s, r = document) => r.querySelector(s);
@@ -475,7 +483,9 @@ function codeBlock(key) {
 }
 
 // ------------------------------------------------------------------ chips + data note
-const TRACE_STATE = { trace: TRACE_EMBEDDED, source: TRACE_EMBEDDED ? "embedded" : null };
+const TRACE_LIST = !TRACE_EMBEDDED ? [] : Array.isArray(TRACE_EMBEDDED) ? TRACE_EMBEDDED
+  : [{ label: TRACE_EMBEDDED.workload || "trace", note: "", trace: TRACE_EMBEDDED }];
+const TRACE_STATE = { idx: 0, trace: TRACE_LIST.length ? TRACE_LIST[0].trace : null, source: TRACE_LIST.length ? "embedded" : null };
 function renderHeader() {
   const chips = ["Llama 3.1 8B", "RTX 4090 · sm_89", "FP16 / INT8 / INT4", "paged KV", "CUDA graphs", "async decode", "speculative decoding", "CUDA events + NVTX"];
   $("#chips").replaceChildren(...chips.map(c => h("span", { class: "chip" }, c)));
@@ -483,7 +493,9 @@ function renderHeader() {
   $("#data-note").replaceChildren(
     h("b", {}, "Data on this page. "),
     "Sections 02–05 are models and simulations, and each states its assumptions. ",
-    t ? h("span", {}, "Section 06 shows a measured trace: ", h("b", {}, t.workload || "workload"), ".")
+    RESULTS ? h("span", {}, "Section 06 is measured: benchmark results and engine traces from an RTX 4090 run, ",
+      "with Hugging Face Transformers and vLLM as baselines on the same workloads.")
+      : t ? h("span", {}, "Section 06 shows a measured trace: ", h("b", {}, t.workload || "workload"), ".")
       : "Section 06 shows measured data once you load a trace from redline_bench.");
 }
 
@@ -954,7 +966,81 @@ $("#sp-step").addEventListener("click", () => { spPlay(false); spStep(); });
 $("#sp-reset").addEventListener("click", () => { spPlay(false); spReset(); });
 ["sp-a", "sp-k", "sp-c"].forEach(id => $("#" + id).addEventListener("input", spRender));
 
-// ------------------------------------------------------------------ 6. trace viewer
+// ------------------------------------------------------------------ 6. measured results
+const SYS_COLOR = { redline_fp16: "--s1", redline_int8: "--s3", redline_int4: "--accent", hf_fp16: "--s4", vllm: "--s5", vllm_awq_int4: "--s7" };
+function renderResults() {
+  const root = $("#results-root");
+  if (!RESULTS) { root.hidden = true; return; }
+  const R = RESULTS, vs = R.vs_hf, pct = (x) => (x >= 0 ? "+" : "−") + fmt(Math.abs(x) * 100, 0) + "%";
+  const q = Object.fromEntries(R.quality.map(x => [x.model, x]));
+  const qi8 = R.quality.find(x => /int8/.test(x.model)), qi4 = R.quality.find(x => /int4/.test(x.model));
+  const bw = R.bandwidth.find(x => x.tag === "redline_fp16");
+  root.replaceChildren(
+    h("div", {}, h("h3", {}, "Llama 3.1 8B Instruct on one RTX 4090"),
+      h("div", { class: "sub", style: "font-size:12.5px;color:var(--muted)" },
+        `${R.env || "RTX 4090"} · same workload files for every system · greedy, EOS ignored · source: ${R.source}/`)),
+    h("div", { class: "stats" },
+      vs.redline_int8 ? stat(pct(vs.redline_int8.decode - 1), "INT8 decode tok/s vs HF FP16 (batch 1–32 geomean)", true) : null,
+      qi8 ? stat(fmt(qi8.retention * 100, 1) + "%", "INT8 quality retention (WikiText, HellaSwag, ARC)") : null,
+      vs.redline_int8 && vs.redline_int8.vram != null ? stat("−" + fmt(vs.redline_int8.vram * 100, 0) + "%", "INT8 peak VRAM vs HF FP16") : null,
+      vs.redline_int4 ? stat(pct(vs.redline_int4.decode - 1), "INT4 decode vs HF FP16") : null,
+      bw ? stat(fmt(100 * bw.floor / bw.tpot, 0) + "%", "of DRAM bandwidth, FP16 batch 1") : null,
+      vs.vllm && vs.redline_fp16 ? stat(pct(vs.redline_fp16.decode / vs.vllm.decode - 1), "FP16 decode vs vLLM FP16") : null),
+    h("div", { class: "charts", style: "margin-top:16px" },
+      chartBox("Decode throughput vs batch size", "512-token prompts, 256 output tokens. Solid: Redline. Dashed: baselines. Hover for TPOT and TTFT.",
+        (svg) => drawSweep(svg, R)),
+      h("div", { class: "chart" }, h("h3", {}, "Batch 1: how close to the memory-bandwidth floor?"),
+        h("div", { class: "sub" }, "Bytes streamed per token ÷ 1008 GB/s vs the measured time per output token (WikiText prompts, 128 in / 128 out)."),
+        h("table", { class: "mini" }, h("thead", {}, h("tr", {}, ...["weights", "bytes / token", "floor", "measured", "efficiency"].map(x => h("th", {}, x)))),
+          h("tbody", {}, ...R.bandwidth.map(b => h("tr", {}, h("td", {}, b.tag.replace("redline_", "").toUpperCase()), h("td", {}, fmt(b.gb, 2) + " GB"),
+            h("td", {}, fmt(b.floor, 2) + " ms"), h("td", {}, fmt(b.tpot, 2) + " ms"), h("td", {}, h("b", {}, fmt(100 * b.floor / b.tpot, 0) + "%")))))),
+        h("h3", { style: "margin-top:16px" }, "Quality retention vs FP16 Transformers"),
+        h("table", { class: "mini" }, h("thead", {}, h("tr", {}, ...["model", "WikiText ppl", "mean retention"].map(x => h("th", {}, x)))),
+          h("tbody", {}, ...R.quality.map(x => h("tr", {}, h("td", {}, /^l8b-/.test(x.model) ? "Redline " + x.model.replace(/^l8b-|\.rlm$/g, "").toUpperCase() : x.model),
+            h("td", {}, x.ppl != null ? fmt(x.ppl, 3) : "–"), h("td", {}, h("b", {}, fmt(x.retention * 100, 1) + "%")))))))),
+    h("ul", { class: "findings" },
+      h("li", {}, h("b", {}, "Where Redline wins: "), "batch 1–4 decode. The INT4 GEMV is 3–4% faster than vLLM's Marlin kernel, and FP16 is on par with vLLM."),
+      h("li", {}, h("b", {}, "Where it loses: "), "INT4 at batch ≥ 8. The W4A16 GEMV runs on CUDA cores and stops scaling, while Marlin uses tensor cores (3× faster at batch 32). Prefill is also about 4× slower than vLLM's at batch 32."),
+      h("li", {}, h("b", {}, "Speculative decoding: "), "1.25–1.34× at batch 1 with a 40–52% acceptance rate on WikiText prompts, but slower than plain INT4 at batch 8, where verification (40 rows) leaves the GEMV path.")));
+}
+function drawSweep(svg, R) {
+  const W = svgSize(svg), H = 230, l = 52, r = 12, t = 10, b = 58;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.replaceChildren();
+  const B = R.batches, n = B.length;
+  const ymax = Math.max(...R.series.flatMap(s => s.tps)) * 1.08;
+  const sx = (i) => l + i / (n - 1) * (W - l - r), sy = (v) => H - b - v / ymax * (H - t - b);
+  axisY(svg, l, W - r, sy, ymax, "");
+  B.forEach((bb, i) => svg.append(h("text", { x: sx(i), y: H - b + 14, "font-size": 10, fill: tok("--muted"), "text-anchor": "middle" }, String(bb))));
+  svg.append(h("text", { x: W - r, y: H - b + 27, "font-size": 10, fill: tok("--muted"), "text-anchor": "end" }, "batch size"));
+  svg.append(h("text", { x: 4, y: t + 2, "font-size": 10, fill: tok("--muted") }, "tok/s"));
+  R.series.forEach(s => {
+    const c = tok(SYS_COLOR[s.tag] || "--muted");
+    svg.append(h("polyline", { points: s.tps.map((v, i) => `${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(" "), fill: "none", stroke: c,
+      "stroke-width": s.redline ? 2.5 : 1.75, "stroke-dasharray": s.redline ? "" : "5 4", "stroke-linejoin": "round" }));
+    s.tps.forEach((v, i) => svg.append(h("circle", { cx: sx(i), cy: sy(v), r: s.redline ? 3 : 2.5, fill: s.redline ? c : tok("--panel"), stroke: c, "stroke-width": 1.5 })));
+  });
+  const cross = h("line", { y1: t, y2: H - b, stroke: tok("--muted"), "stroke-dasharray": "3 3", visibility: "hidden" });
+  const hit = h("rect", { x: l, y: t, width: W - l - r, height: H - t - b, fill: "transparent" });
+  hit.addEventListener("mousemove", (e) => {
+    const box = svg.getBoundingClientRect(), x = (e.clientX - box.left) * (W / box.width);
+    const i = clamp(Math.round((x - l) / (W - l - r) * (n - 1)), 0, n - 1);
+    cross.setAttribute("x1", sx(i)); cross.setAttribute("x2", sx(i)); cross.setAttribute("visibility", "visible");
+    showTip(e, `<b>batch ${B[i]}</b><br>` + [...R.series].sort((a, b2) => b2.tps[i] - a.tps[i]).map(s =>
+      `${s.label}: ${fmtInt(s.tps[i])} tok/s · TPOT ${fmt(s.tpot[i], 2)} ms · TTFT ${fmtInt(s.ttft[i])} ms`).join("<br>"));
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+  svg.append(cross, hit);
+  let lx = l, ly = H - 22;
+  R.series.forEach(s => {
+    const w = 26 + s.label.length * 6.2;
+    if (lx + w > W - r) { lx = l; ly += 14; }
+    svg.append(h("line", { x1: lx, x2: lx + 16, y1: ly - 3, y2: ly - 3, stroke: tok(SYS_COLOR[s.tag] || "--muted"), "stroke-width": 2, "stroke-dasharray": s.redline ? "" : "4 3" }));
+    svg.append(h("text", { x: lx + 20, y: ly, "font-size": 10.5, fill: tok("--ink-2") }, s.label)); lx += w;
+  });
+  if (ly > H - 22) { svg.setAttribute("height", H + (ly - (H - 22))); svg.setAttribute("viewBox", `0 0 ${W} ${H + (ly - (H - 22))}`); }
+}
+
+// ------------------------------------------------------------------ 6b. trace viewer
 function traceRows(t, key) { const f = t[key + "_fields"]; return t[key + "s"].map(r => Object.fromEntries(f.map((k, i) => [k, r[i]]))); }
 function renderTrace() {
   const root = $("#trace-root");
@@ -983,25 +1069,33 @@ function renderTrace() {
   }
   const steps = traceRows(t, "step"), reqs = traceRows(t, "request");
   const eng = (t.engine && t.engine.engine) || {};
+  const embedded = TRACE_STATE.source === "embedded" ? TRACE_LIST[TRACE_STATE.idx] : null;
+  const picker = TRACE_LIST.length > 1 ? h("div", { class: "seg", role: "group", "aria-label": "Recorded trace" },
+    ...TRACE_LIST.map((e, i) => h("button", { type: "button", "aria-pressed": String(TRACE_STATE.source === "embedded" && i === TRACE_STATE.idx),
+      onclick: () => { TRACE_STATE.idx = i; TRACE_STATE.trace = e.trace; TRACE_STATE.source = "embedded"; renderTrace(); } }, e.label))) : null;
   const model = t.engine && t.engine.model;
   const peak = t.memory && t.memory.peak_device_used_bytes;
   const spec = t.speculative && t.speculative.enabled;
   const graphFrac = steps.length ? steps.filter(s => s.cuda_graph).length / steps.length : 0;
   root.replaceChildren(
+    picker ? h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px" },
+      h("span", { style: "font-size:13px;color:var(--muted)" }, "Trace"), picker) : null,
     h("div", { style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline" },
-      h("div", {}, h("h3", {}, `Workload ${t.workload}`),
+      h("div", {}, h("h3", {}, embedded ? `${embedded.label} · ${t.workload}` : `Workload ${t.workload}`),
         h("div", { class: "sub", style: "font-size:12.5px;color:var(--muted)" },
           [model ? `${model.num_layers}L · H ${model.hidden_size} · ${model.quant ? model.quant.weight_dtype : ""} weights` : null,
            eng.kv_dtype ? `${eng.kv_dtype} KV` : null, eng.max_num_seqs ? `max ${eng.max_num_seqs} seqs` : null,
            eng.cuda_graphs != null ? (eng.cuda_graphs ? "CUDA graphs on" : "CUDA graphs off") : null,
            eng.async_scheduling != null ? (eng.async_scheduling ? "async" : "sync") : null,
-           TRACE_STATE.source === "embedded" ? "embedded at build time" : `loaded from ${TRACE_STATE.source}`].filter(Boolean).join(" · "))),
+           TRACE_STATE.source === "embedded" ? "recorded on an RTX 4090" : `loaded from ${TRACE_STATE.source}`].filter(Boolean).join(" · ")),
+        embedded && embedded.note ? h("p", { style: "margin:6px 0 0;font-size:13.5px;color:var(--ink-2);max-width:72ch" }, embedded.note) : null),
       loader),
     h("div", { class: "stats" },
       stat(fmt(t.decode_throughput_tok_s || 0, 0), "decode tok/s", true),
       stat(fmt(t.output_throughput_tok_s || 0, 0), "output tok/s"),
       stat(t.ttft_ms ? fmt(t.ttft_ms.p50, 1) + " ms" : "–", "TTFT p50"),
-      stat(t.itl_ms ? `${fmt(t.itl_ms.p50, 2)} / ${fmt(t.itl_ms.p99, 2)}` : "–", "ITL p50 / p99 (ms)"),
+      t.tpot_ms ? stat(`${fmt(t.tpot_ms.p50, 2)} / ${fmt(t.itl_ms.p99, 1)}`, "TPOT p50 / ITL p99 (ms)")
+        : stat(t.itl_ms ? `${fmt(t.itl_ms.p50, 2)} / ${fmt(t.itl_ms.p99, 2)}` : "–", "ITL p50 / p99 (ms)"),
       stat(peak ? fmt(peak / 2 ** 30, 2) + " GiB" : "–", "peak device memory"),
       stat(fmt(100 * graphFrac, 0) + "%", "steps replayed as graphs"),
       spec ? stat(fmt(100 * t.speculative.acceptance_rate, 1) + "%", "draft acceptance") : null),
@@ -1140,7 +1234,7 @@ function renderMap() {
 }
 
 // ------------------------------------------------------------------ boot
-function renderAll() { renderHeader(); renderPipeline(); renderAsync(); kvRender(); renderBandwidth(); spRender(); renderTrace(); renderMap(); }
+function renderAll() { renderHeader(); renderPipeline(); renderAsync(); kvRender(); renderBandwidth(); spRender(); renderResults(); renderTrace(); renderMap(); }
 kvReset();
 renderAll();
 let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => { renderAsync(); renderBandwidth(); spRender(); renderTrace(); }, 150); });

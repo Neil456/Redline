@@ -1,0 +1,88 @@
+{
+  "comparisons": {
+    "redline_fp16__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.2013550642000796,
+      "decode_speedup_min": 1.1580563593828486,
+      "decode_speedup_max": 1.2224439148760007,
+      "peak_vram_reduction_mean": -0.13525664197739984
+    },
+    "redline_fp16__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.9687724828591814,
+      "decode_speedup_min": 0.941944284262044,
+      "decode_speedup_max": 0.9831307179102652,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_fp16__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.3925898377711227,
+      "decode_speedup_min": 0.3560584770695456,
+      "decode_speedup_max": 0.48447912978615537,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 2.1888391187083536,
+      "decode_speedup_min": 0.8458653558827331,
+      "decode_speedup_max": 3.4418167391568217,
+      "peak_vram_reduction_mean": 0.4413727470796836
+    },
+    "redline_int4__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.765079426391162,
+      "decode_speedup_min": 0.6517747174600153,
+      "decode_speedup_max": 2.8274297450535926,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.7152889434007373,
+      "decode_speedup_min": 0.3352334667851751,
+      "decode_speedup_max": 1.0445703407746758,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_spec__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 3.1122343412180573,
+      "decode_speedup_min": 1.4779539942081963,
+      "decode_speedup_max": 6.828529959538452,
+      "peak_vram_reduction_mean": 0.29774838086192396
+    },
+    "redline_int4_spec__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 2.509705148651444,
+      "decode_speedup_min": 1.1388255119973192,
+      "decode_speedup_max": 5.758115988670511,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_spec__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.0170445120969036,
+      "decode_speedup_min": 0.5857429173350592,
+      "decode_speedup_max": 2.0995143788275943,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.812739835346104,
+      "decode_speedup_min": 1.255201427662745,
+      "decode_speedup_max": 2.2222681278388356,
+      "peak_vram_reduction_mean": 0.2664427572878967
+    },
+    "redline_int8__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.4617930397082952,
+      "decode_speedup_min": 0.9671853211395882,
+      "decode_speedup_max": 1.8179779935674967,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int8__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.5923837665375294,
+      "decode_speedup_min": 0.4540842706151802,
+      "decode_speedup_max": 0.6749243321826485,
+      "peak_vram_reduction_mean": null
+    }
+  }
+}

@@ -12,6 +12,11 @@ Plan on about 8–10 minutes. Spend longer wherever the interviewer digs in.
 > harness compares it with Hugging Face Transformers and vLLM on the same
 > workloads. Decode on one GPU is memory-bound, so most of the work goes into
 > moving fewer bytes per token and keeping the GPU from ever waiting on the CPU.
+> On an RTX 4090 with Llama 3.1 8B:
+> - INT8 decodes 81% faster than Transformers FP16 with 43% less peak memory
+>   and 99.6% quality retention.
+> - FP16 is on par with vLLM.
+> - At batch 1, INT4 beats vLLM's Marlin kernel.
 
 ## Talk track by section
 
@@ -64,11 +69,30 @@ the CPU.** Sampled ids feed the next step on the device.
 - Use the chart to show that the best `k` depends on acceptance rate and the
   draft/target cost ratio.
 
-### 06 Real run (2 min, once you have a trace)
-- These numbers are measured by `redline_bench` on the GPU, with CUDA-event
-  step times. Point at the prefill steps (orange) vs decode steps (blue), the
-  batch filling up, and the KV pool usage tracking it.
-- Hover a request in the timeline to show its TTFT and preemptions.
+### 06 Measured on an RTX 4090 (3 min)
+Everything in this section was measured on one RTX 4090 (`results/rtx4090/`).
+The baselines ran the same workload files.
+- **Batch sweep chart.** Hover each batch size.
+  - Below batch 8, solid Redline lines sit at or above the dashed baselines.
+  - Redline INT4 (red) flattens after batch 8 while vLLM AWQ keeps climbing.
+    Say why: the W4A16 GEMV runs on CUDA cores. Up to batch 8 it is
+    memory-bound, beyond that it is FMA- and L1-bound. Marlin uses tensor cores.
+    This is the most honest and interesting slide: you know exactly where the
+    design stops scaling and what fixes it.
+- **Bandwidth table.** At batch 1, FP16 runs at 89% of DRAM bandwidth. INT4
+  reaches only 73% because the fixed per-step work (attention, norms, sampling,
+  launches) weighs more once the weights shrink 3.5×.
+- **Quality.** INT8 is lossless in practice (WikiText perplexity 8.108 for both).
+  INT4 RTN g128 costs about 12% perplexity on Llama 3. AWQ/GPTQ calibration is
+  the known fix.
+- **Traces.** Switch between the three recorded runs:
+  - *INT4 weights:* the batch fills to about 29 sequences and the queue never
+    builds.
+  - *INT8, small KV pool:* the pool hits 100%. Requests wait (orange line), and
+    the Gantt chart shows the light "waiting" segments of the queued ones. That
+    is admission control and recompute preemption working (7 preemptions).
+  - *INT4 + speculative:* far fewer steps (520 vs 1332 for the same work),
+    because each step emits several tokens per sequence. Acceptance is 65.5%.
 
 ### 07 Code map
 Use it when someone asks "where is that in the code?" Every excerpt is
@@ -95,6 +119,7 @@ numbers match the source.
 | Quantizer | `python/redline/quantize.py` | INT4 groups with clip search |
 | Exporter | `python/redline/convert.py` | streaming HF → `.rlm` conversion |
 | Tests | `tests/python/test_convert.py`, `tests/cuda/` | exporter vs HF logits; kernels and engine vs the CPU reference |
+| Measured results | `results/rtx4090/README.md` | methodology, batch sweep, quality, what the numbers say |
 
 ## Questions you should expect
 
@@ -122,22 +147,48 @@ statistically: with a deliberately mismatched draft, the first emitted token
 still follows the target distribution.
 
 **Why not just use vLLM?** The point was control and understanding every
-byte on the critical path. vLLM is one of the baselines, and the
-benchmark harness runs both on identical workloads.
+byte on the critical path. vLLM is one of the baselines, and the benchmark
+harness runs both on identical workloads. Measured: FP16 decode is within 3%
+of vLLM. Redline's INT4 GEMV is 3–4% faster than vLLM's Marlin at batch 1–4
+and up to 3× slower at batch 32. vLLM's prefill is about 4× faster at large
+batch.
 
-**What would you do next?** A tensor-core (mma.sync) prefill attention, a BF16
-path, overlapping prefill and decode on separate streams, and async
-scheduling for speculative decoding.
+**How did you make the comparison fair?** Every system reads the same
+workload JSON: identical prompt token ids, output lengths, greedy decoding,
+EOS ignored. Offline workloads run as successive static batches for everyone,
+with TTFT measured from batch submission. Decode throughput is
+batch × 1000 / TPOT for every system. ITL would not work: speculative decoding
+emits tokens in bursts, so its median ITL is 0. Online workloads are compared
+on latency only, because their throughput is set by the arrival rate. I fixed
+the first two of these after the first GPU run showed Redline's TTFT counting
+queue time that HF's did not. That is a good story about checking your own
+benchmark.
 
-## Producing a real trace for section 06
+**What broke when you first ran on a real GPU?** 22 of 24 tests passed. The two
+failures were one bug: cuBLASLt has no algorithm for an FP16 bias epilogue with
+FP32 output. Running real checkpoints found one more bug in the Python binding,
+and the benchmarks found the INT4 scaling cliff.
+
+**What would you do next?** In order of measured impact:
+1. A tensor-core W4A16 GEMM (Marlin-style, or build the TensorRT-LLM backend)
+   for INT4 at batch ≥ 8.
+2. A tensor-core flash-attention prefill kernel for TTFT.
+3. Calibrated INT4 (AWQ/GPTQ) to recover the 5% quality gap.
+4. Turning speculative decoding off adaptively at higher batch, where it
+   currently loses.
+
+## Producing traces for section 06
+
+The page bakes in `results/rtx4090/` and the three traces in `demo/traces/`.
+To record a new one:
 
 ```bash
-build/redline_bench --model llama-int4.rlm --synthetic 32,512,256 --max-seqs 8 \
-    --track-memory --trace-out trace.json
-python demo/build_demo.py --trace trace.json      # bakes the trace into demo/index.html
+build/redline_bench --model llama-int4.rlm --online --workload online_rate4_greedy.json \
+    --max-seqs 32 --track-memory --trace-out trace.json
+python demo/build_demo.py --trace "My run=trace.json"     # replaces the baked-in traces
 ```
 
-You can also load any trace with the **Load trace.json** button on the page.
+You can also load any trace with the **Load another trace** button on the page.
 Keep the numbers honest: everything you quote should come from
 `redline_bench`, `redline.report` or `redline.eval_quality` output on your
 hardware.

@@ -1,0 +1,178 @@
+{
+  "workload": "sweep_b8_in512_out256",
+  "workload_settings": {
+    "kind": "offline",
+    "batch_size": 8,
+    "prompt_len": 512,
+    "output_len": 256,
+    "sampling": "greedy"
+  },
+  "mode": "offline",
+  "engine": {
+    "engine": {
+      "model_path": "/root/models/l8b-fp16.rlm",
+      "draft_model_path": "",
+      "num_speculative_tokens": 4,
+      "max_num_seqs": 32,
+      "max_num_batched_tokens": 2048,
+      "max_seq_len": 1024,
+      "block_size": 16,
+      "kv_cache_tokens": 33024,
+      "gpu_memory_utilization": 0.9,
+      "kv_dtype": "fp16",
+      "cuda_graphs": true,
+      "async_scheduling": true,
+      "mix_prefill_decode": true,
+      "gemv_max_m": 8,
+      "int8_prefill": "auto",
+      "int4_prefill": "auto"
+    },
+    "model": {
+      "architecture": "llama",
+      "vocab_size": 128256,
+      "hidden_size": 4096,
+      "intermediate_size": 14336,
+      "num_layers": 32,
+      "num_heads": 32,
+      "num_kv_heads": 8,
+      "head_dim": 128,
+      "rms_norm_eps": 1e-05,
+      "rope_theta": 500000,
+      "rope_scaling": {
+        "type": "llama3",
+        "factor": 8,
+        "low_freq_factor": 1,
+        "high_freq_factor": 4,
+        "original_max_position_embeddings": 8192
+      },
+      "max_position_embeddings": 131072,
+      "attention_bias": false,
+      "tie_word_embeddings": false,
+      "bos_token_id": 128000,
+      "eos_token_ids": [
+        128001,
+        128008,
+        128009
+      ],
+      "quant": {
+        "weight_dtype": "fp16",
+        "lm_head_dtype": "fp16",
+        "group_size": 128
+      }
+    },
+    "linear": "gemv_max_m=8 int8_prefill=cutlass int4_prefill=dequant",
+    "graph_buckets": [
+      1,
+      2,
+      4,
+      8,
+      12,
+      16,
+      24,
+      32
+    ]
+  },
+  "num_requests": 8,
+  "duration_s": 4.963903058320284,
+  "prompt_tokens": 4096,
+  "output_tokens": 2048,
+  "request_throughput_rps": 1.6116350190583877,
+  "output_throughput_tok_s": 412.57856487894725,
+  "decode_throughput_tok_s": 446.1565470111445,
+  "decode_throughput_gpu_tok_s": 446.38131804273763,
+  "prefill_throughput_gpu_tok_s": 9844.70591876845,
+  "ttft_ms": {
+    "count": 8,
+    "mean": 298.71228011325,
+    "p50": 296.08829133212566,
+    "p90": 401.45947001874447,
+    "p95": 408.80663860589266,
+    "p99": 414.6843734756112,
+    "min": 197.0146857202053,
+    "max": 416.15380719304085,
+    "std": 101.9005034731087
+  },
+  "itl_ms": {
+    "count": 2040,
+    "mean": 18.20178539035659,
+    "p50": 17.83454790711403,
+    "p90": 17.886511981487274,
+    "p95": 17.900679260492325,
+    "p99": 17.91597157716751,
+    "min": 17.13668555021286,
+    "max": 198.1472112238407,
+    "std": 7.9781790640161105
+  },
+  "tpot_ms": {
+    "count": 8,
+    "mean": 18.201785390356594,
+    "p50": 18.203675206385405,
+    "p90": 18.55799231459113,
+    "p95": 18.55799231459113,
+    "p99": 18.55799231459113,
+    "min": 17.83423956994917,
+    "max": 18.55799231459113,
+    "std": 0.356237001587939
+  },
+  "e2e_latency_ms": {
+    "count": 8,
+    "mean": 4940.167554654181,
+    "p50": 4938.025468960404,
+    "p90": 4951.88921764493,
+    "p95": 4957.887057587504,
+    "p99": 4962.685329541564,
+    "min": 4929.302725940943,
+    "max": 4963.884897530079,
+    "std": 12.065475112273887
+  },
+  "decode_step_gpu_ms": {
+    "count": 255,
+    "mean": 17.82525930965648,
+    "p50": 17.825599670410156,
+    "p90": 17.877415084838866,
+    "p95": 17.889702224731444,
+    "p99": 17.901344299316406,
+    "min": 17.131103515625,
+    "max": 17.962751388549805,
+    "std": 0.06024575501163856
+  },
+  "host_overhead_ms": {
+    "count": 258,
+    "mean": 0.04125221870666326,
+    "p50": 0.01924671232700348,
+    "p90": 0.043929740786552436,
+    "p95": 0.05095601081848139,
+    "p99": 0.6272875890135837,
+    "min": 0.013101845979690552,
+    "max": 1.7239414155483246,
+    "std": 0.15283465777312402
+  },
+  "num_steps": 258,
+  "cuda_graph_step_fraction": 0.9883720930232558,
+  "preemptions": 0,
+  "speculative": {
+    "enabled": false,
+    "draft_tokens_proposed": 0,
+    "draft_tokens_accepted": 0,
+    "acceptance_rate": 0,
+    "tokens_per_seq_step": 0
+  },
+  "memory": {
+    "ledger_bytes": {
+      "activations": 260436096,
+      "cuda_graphs": 39845888,
+      "kv_cache": 4330618880,
+      "weights": 16060522496,
+      "workspace": 106987520,
+      "total": 20798410880
+    },
+    "device_used_bytes": 21218066432,
+    "device_total_bytes": 25250627584,
+    "device_used_after_init_bytes": 21218066432,
+    "peak_device_used_bytes": 21218066432,
+    "kv_cache_blocks": 2065,
+    "kv_cache_token_capacity": 33024
+  },
+  "tag": "redline_fp16",
+  "system": "redline"
+}

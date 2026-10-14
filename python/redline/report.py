@@ -49,8 +49,20 @@ def peak_gib(rep: dict) -> float:
     return rep["memory"]["peak_device_used_bytes"] / 2**30
 
 
+def is_offline(rep: dict) -> bool:
+    return (rep.get("workload_settings") or {}).get("kind", "offline") == "offline"
+
+
+def preallocates(tag: str) -> bool:
+    """vLLM reserves gpu_memory_utilization x VRAM up front, so its peak VRAM is not comparable."""
+    return tag.startswith("vllm")
+
+
 def compare(reports: dict, tag: str, baseline: str) -> dict | None:
-    shared = sorted(set(reports[tag]) & set(reports.get(baseline, {})))
+    # Offline workloads only: an online workload's output rate is set by its arrival rate, so its
+    # throughput says little; online runs are compared on TTFT / TPOT in the per-workload tables.
+    shared = sorted(w for w in set(reports[tag]) & set(reports.get(baseline, {}))
+                    if is_offline(reports[tag][w]))
     if not shared:
         return None
     ratios, mem = [], []
@@ -58,7 +70,7 @@ def compare(reports: dict, tag: str, baseline: str) -> dict | None:
         a, b = reports[tag][w], reports[baseline][w]
         if decode_tps(b) > 0 and decode_tps(a) > 0:
             ratios.append(decode_tps(a) / decode_tps(b))
-        if peak_gib(b) > 0:
+        if peak_gib(b) > 0 and not preallocates(baseline):
             mem.append(1.0 - peak_gib(a) / peak_gib(b))
     if not ratios:
         return None
@@ -67,21 +79,23 @@ def compare(reports: dict, tag: str, baseline: str) -> dict | None:
         "decode_speedup_geomean": math.exp(sum(math.log(r) for r in ratios) / len(ratios)),
         "decode_speedup_min": min(ratios),
         "decode_speedup_max": max(ratios),
-        "peak_vram_reduction_mean": sum(mem) / len(mem) if mem else 0.0,
+        "peak_vram_reduction_mean": sum(mem) / len(mem) if mem else None,
     }
 
 
 def fmt_table(reports: dict, workload: str, tags: list[str]) -> str:
+    present = [t for t in tags if workload in reports[t]]
+    offline = all(is_offline(reports[t][workload]) for t in present)
+    rate_col = "decode tok/s" if offline else "output tok/s"
     lines = [f"#### {workload}", "",
-             "| system | decode tok/s | TTFT p50 / p99 (ms) | TPOT p50 (ms) | ITL p99 (ms) | peak VRAM (GiB) | accept |",
+             f"| system | {rate_col} | TTFT p50 / p99 (ms) | TPOT p50 (ms) | ITL p99 (ms) | peak VRAM (GiB) | accept |",
              "|---|---:|---:|---:|---:|---:|---:|"]
-    for t in tags:
-        r = reports[t].get(workload)
-        if r is None:
-            continue
+    for t in present:
+        r = reports[t][workload]
         acc = r.get("speculative", {})
         acc_s = f"{acc.get('acceptance_rate', 0):.2f}" if acc.get("enabled") else "-"
-        lines.append(f"| {t} | {decode_tps(r):.1f} | {r['ttft_ms']['p50']:.1f} / {r['ttft_ms']['p99']:.1f} | "
+        rate = decode_tps(r) if offline else r.get("output_throughput_tok_s", 0.0)
+        lines.append(f"| {t} | {rate:.1f} | {r['ttft_ms']['p50']:.1f} / {r['ttft_ms']['p99']:.1f} | "
                      f"{r['tpot_ms']['p50']:.2f} | {r['itl_ms']['p99']:.2f} | {peak_gib(r):.2f} | {acc_s} |")
     return "\n".join(lines) + "\n"
 
@@ -101,7 +115,10 @@ def main(argv=None) -> None:
     redline_tags = [t for t in tags if t not in baselines]
     md = ["# Redline benchmark report", ""]
     summary = {"comparisons": {}}
-    md += ["## Headline", "", "| config | vs | workloads | decode speedup (geomean) | range | peak VRAM reduction |",
+    md += ["## Headline", "",
+           "Offline workloads only; decode throughput = batch x 1000 / TPOT p50. Peak VRAM is not compared "
+           "against vLLM, which preallocates its memory pool.", "",
+           "| config | vs | workloads | decode speedup (geomean) | range | peak VRAM reduction |",
            "|---|---|---:|---:|---:|---:|"]
     for t in redline_tags:
         for b in baselines:
@@ -111,7 +128,8 @@ def main(argv=None) -> None:
             summary["comparisons"][f"{t}__vs__{b}"] = c
             md.append(f"| {t} | {b} | {c['workloads']} | {(c['decode_speedup_geomean'] - 1) * 100:+.1f}% | "
                       f"{c['decode_speedup_min']:.2f}x-{c['decode_speedup_max']:.2f}x | "
-                      f"{c['peak_vram_reduction_mean'] * 100:.1f}% |")
+                      + (f"{c['peak_vram_reduction_mean'] * 100:.1f}% |" if c['peak_vram_reduction_mean'] is not None
+                         else "n/a |"))
     if args.quality:
         with open(args.quality) as f:
             q = json.load(f)

@@ -1,0 +1,88 @@
+{
+  "system": "vllm",
+  "workload": "sweep_b1_in512_out256",
+  "workload_settings": {
+    "kind": "offline",
+    "batch_size": 1,
+    "prompt_len": 512,
+    "output_len": 256,
+    "sampling": "greedy"
+  },
+  "num_requests": 1,
+  "duration_s": 4.2866393849253654,
+  "prompt_tokens": 512,
+  "output_tokens": 256,
+  "request_throughput_rps": 0.23328297769032208,
+  "output_throughput_tok_s": 59.72044228872245,
+  "decode_throughput_tok_s": 59.799508777003815,
+  "ttft_ms": {
+    "count": 1,
+    "mean": 22.25612848997116,
+    "p50": 22.25612848997116,
+    "p90": 22.25612848997116,
+    "p95": 22.25612848997116,
+    "p99": 22.25612848997116,
+    "min": 22.25612848997116,
+    "max": 22.25612848997116,
+    "std": 0.0
+  },
+  "itl_ms": {
+    "count": 255,
+    "mean": 16.72254539295739,
+    "p50": 16.72978699207306,
+    "p90": 16.930899769067764,
+    "p95": 17.160794138908386,
+    "p99": 17.383677437901497,
+    "min": 15.900000929832458,
+    "max": 17.424825578927994,
+    "std": 0.23899895899892484
+  },
+  "tpot_ms": {
+    "count": 1,
+    "mean": 16.72254539295739,
+    "p50": 16.72254539295739,
+    "p90": 16.72254539295739,
+    "p95": 16.72254539295739,
+    "p99": 16.72254539295739,
+    "min": 16.72254539295739,
+    "max": 16.72254539295739,
+    "std": 0.0
+  },
+  "e2e_latency_ms": {
+    "count": 1,
+    "mean": 4286.505203694105,
+    "p50": 4286.505203694105,
+    "p90": 4286.505203694105,
+    "p95": 4286.505203694105,
+    "p99": 4286.505203694105,
+    "min": 4286.505203694105,
+    "max": 4286.505203694105,
+    "std": 0.0
+  },
+  "memory": {
+    "peak_device_used_bytes": 23496753152
+  },
+  "speculative": {
+    "enabled": false,
+    "acceptance_rate": 0.0
+  },
+  "tag": "vllm",
+  "vllm_settings": {
+    "model": "NousResearch/Meta-Llama-3.1-8B-Instruct",
+    "workload": [
+      "/workspace/wl-sweep/sweep_b1_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b2_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b4_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b8_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b16_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b32_in512_out256.json"
+    ],
+    "out": "/workspace/runs/sweep",
+    "quantization": null,
+    "max_num_seqs": 32,
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "tag": "vllm"
+  }
+}

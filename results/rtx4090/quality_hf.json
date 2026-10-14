@@ -1,0 +1,32 @@
+{
+  "model": "NousResearch/Meta-Llama-3.1-8B-Instruct",
+  "limit": 250,
+  "results": {
+    "wikitext": {
+      "perplexity": 8.10788994276188,
+      "tokens": 256000,
+      "seconds": 34.14895176887512
+    },
+    "hellaswag": {
+      "acc": 0.56,
+      "acc_norm": 0.7,
+      "n": 250,
+      "primary": "acc_norm",
+      "seconds": 30.787766218185425
+    },
+    "arc_easy": {
+      "acc": 0.796,
+      "acc_norm": 0.784,
+      "n": 250,
+      "primary": "acc",
+      "seconds": 28.94679546356201
+    },
+    "arc_challenge": {
+      "acc": 0.536,
+      "acc_norm": 0.528,
+      "n": 250,
+      "primary": "acc_norm",
+      "seconds": 28.18815016746521
+    }
+  }
+}

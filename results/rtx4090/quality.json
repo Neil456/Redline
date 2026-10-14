@@ -1,0 +1,115 @@
+{
+  "reference": {
+    "model": "NousResearch/Meta-Llama-3.1-8B-Instruct",
+    "results": {
+      "wikitext": {
+        "perplexity": 8.10788994276188,
+        "tokens": 256000,
+        "seconds": 34.14895176887512
+      },
+      "hellaswag": {
+        "acc": 0.56,
+        "acc_norm": 0.7,
+        "n": 250,
+        "primary": "acc_norm",
+        "seconds": 30.787766218185425
+      },
+      "arc_easy": {
+        "acc": 0.796,
+        "acc_norm": 0.784,
+        "n": 250,
+        "primary": "acc",
+        "seconds": 28.94679546356201
+      },
+      "arc_challenge": {
+        "acc": 0.536,
+        "acc_norm": 0.528,
+        "n": 250,
+        "primary": "acc_norm",
+        "seconds": 28.18815016746521
+      }
+    }
+  },
+  "candidates": [
+    {
+      "model": "/root/models/l8b-int8.rlm",
+      "results": {
+        "wikitext": {
+          "perplexity": 8.107944582589045,
+          "tokens": 256000,
+          "seconds": 35.786532402038574
+        },
+        "hellaswag": {
+          "acc": 0.556,
+          "acc_norm": 0.704,
+          "n": 250,
+          "primary": "acc_norm",
+          "seconds": 20.064394235610962
+        },
+        "arc_easy": {
+          "acc": 0.796,
+          "acc_norm": 0.784,
+          "n": 250,
+          "primary": "acc",
+          "seconds": 19.06848669052124
+        },
+        "arc_challenge": {
+          "acc": 0.536,
+          "acc_norm": 0.516,
+          "n": 250,
+          "primary": "acc_norm",
+          "seconds": 19.222695350646973
+        }
+      },
+      "retention": {
+        "per_task": {
+          "wikitext": 0.9999932609520688,
+          "hellaswag": 1.0057142857142858,
+          "arc_easy": 1.0,
+          "arc_challenge": 0.9772727272727273
+        },
+        "mean": 0.9957450684847704
+      }
+    },
+    {
+      "model": "/root/models/l8b-int4.rlm",
+      "results": {
+        "wikitext": {
+          "perplexity": 9.068024369177618,
+          "tokens": 256000,
+          "seconds": 42.32581686973572
+        },
+        "hellaswag": {
+          "acc": 0.548,
+          "acc_norm": 0.68,
+          "n": 250,
+          "primary": "acc_norm",
+          "seconds": 25.86695909500122
+        },
+        "arc_easy": {
+          "acc": 0.748,
+          "acc_norm": 0.74,
+          "n": 250,
+          "primary": "acc",
+          "seconds": 24.087085485458374
+        },
+        "arc_challenge": {
+          "acc": 0.476,
+          "acc_norm": 0.52,
+          "n": 250,
+          "primary": "acc_norm",
+          "seconds": 24.516409635543823
+        }
+      },
+      "retention": {
+        "per_task": {
+          "wikitext": 0.8941186759842361,
+          "hellaswag": 0.9714285714285715,
+          "arc_easy": 0.9396984924623115,
+          "arc_challenge": 0.9848484848484849
+        },
+        "mean": 0.947523556180901
+      }
+    }
+  ]
+}

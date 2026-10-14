@@ -1,0 +1,88 @@
+{
+  "system": "vllm",
+  "workload": "sweep_b8_in512_out256",
+  "workload_settings": {
+    "kind": "offline",
+    "batch_size": 8,
+    "prompt_len": 512,
+    "output_len": 256,
+    "sampling": "greedy"
+  },
+  "num_requests": 8,
+  "duration_s": 1.9442187175154686,
+  "prompt_tokens": 4096,
+  "output_tokens": 2048,
+  "request_throughput_rps": 4.114763389493163,
+  "output_throughput_tok_s": 1053.3794277102497,
+  "decode_throughput_tok_s": 1177.494191189862,
+  "ttft_ms": {
+    "count": 8,
+    "mean": 191.5130871348083,
+    "p50": 211.06609143316746,
+    "p90": 213.23068886995316,
+    "p95": 215.61026237905025,
+    "p99": 217.51392118632793,
+    "min": 47.679029405117035,
+    "max": 217.98983588814735,
+    "std": 54.411330525769294
+  },
+  "itl_ms": {
+    "count": 2040,
+    "mean": 6.850866144340412,
+    "p50": 6.7686885595321655,
+    "p90": 7.049958780407906,
+    "p95": 7.202602177858353,
+    "p99": 7.491888552904129,
+    "min": 5.0083063542842865,
+    "max": 163.60580176115036,
+    "std": 3.480944078715699
+  },
+  "tpot_ms": {
+    "count": 8,
+    "mean": 6.850866144340412,
+    "p50": 6.775299678830539,
+    "p90": 6.959106637274518,
+    "p95": 7.1734053298246625,
+    "p99": 7.344844283864779,
+    "min": 6.767445232938318,
+    "max": 7.387704022374808,
+    "std": 0.20292193497177508
+  },
+  "e2e_latency_ms": {
+    "count": 8,
+    "mean": 1938.4839539416134,
+    "p50": 1938.767509534955,
+    "p90": 1940.3052430599928,
+    "p95": 1941.9968066737056,
+    "p99": 1943.3500575646758,
+    "min": 1931.543555110693,
+    "max": 1943.6883702874184,
+    "std": 3.0775997539556523
+  },
+  "memory": {
+    "peak_device_used_bytes": 22911647744
+  },
+  "speculative": {
+    "enabled": false,
+    "acceptance_rate": 0.0
+  },
+  "tag": "vllm_awq_int4",
+  "vllm_settings": {
+    "model": "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
+    "workload": [
+      "/workspace/wl-sweep/sweep_b1_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b2_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b4_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b8_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b16_in512_out256.json",
+      "/workspace/wl-sweep/sweep_b32_in512_out256.json"
+    ],
+    "out": "/workspace/runs/sweep",
+    "quantization": null,
+    "max_num_seqs": 32,
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "tag": "vllm_awq_int4"
+  }
+}

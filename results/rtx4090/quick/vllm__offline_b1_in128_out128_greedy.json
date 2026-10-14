@@ -1,0 +1,84 @@
+{
+  "system": "vllm",
+  "workload": "offline_b1_in128_out128_greedy",
+  "workload_settings": {
+    "kind": "offline",
+    "batch_size": 1,
+    "prompt_len": 128,
+    "output_len": 128,
+    "sampling": "greedy"
+  },
+  "num_requests": 2,
+  "duration_s": 4.316798992455006,
+  "prompt_tokens": 256,
+  "output_tokens": 256,
+  "request_throughput_rps": 0.46330626084180504,
+  "output_throughput_tok_s": 59.303201387751045,
+  "decode_throughput_tok_s": 60.01022971078472,
+  "ttft_ms": {
+    "count": 2,
+    "mean": 41.61359742283821,
+    "p50": 41.61359742283821,
+    "p90": 41.8844498693943,
+    "p95": 41.918306425213814,
+    "p99": 41.94539166986942,
+    "min": 41.2750318646431,
+    "max": 41.952162981033325,
+    "std": 0.33856555819511414
+  },
+  "itl_ms": {
+    "count": 254,
+    "mean": 16.66591772589627,
+    "p50": 16.665441915392876,
+    "p90": 16.830339655280113,
+    "p95": 17.118274979293346,
+    "p99": 17.33265120536089,
+    "min": 15.240415930747986,
+    "max": 17.380181699991226,
+    "std": 0.2514465241156493
+  },
+  "tpot_ms": {
+    "count": 2,
+    "mean": 16.66591772589627,
+    "p50": 16.66591772589627,
+    "p90": 16.66759145482788,
+    "p95": 16.667800670944327,
+    "p99": 16.66796804383749,
+    "min": 16.663825564731763,
+    "max": 16.66800988706078,
+    "std": 0.0020921611645086102
+  },
+  "e2e_latency_ms": {
+    "count": 2,
+    "mean": 2158.1851486116648,
+    "p50": 2158.1851486116648,
+    "p90": 2158.2434374839067,
+    "p95": 2158.250723592937,
+    "p99": 2158.256552480161,
+    "min": 2158.1122875213623,
+    "max": 2158.2580097019672,
+    "std": 0.07286109030246735
+  },
+  "memory": {
+    "peak_device_used_bytes": 22599172096
+  },
+  "speculative": {
+    "enabled": false,
+    "acceptance_rate": 0.0
+  },
+  "tag": "vllm",
+  "vllm_settings": {
+    "model": "NousResearch/Meta-Llama-3.1-8B-Instruct",
+    "workload": [
+      "/workspace/wl-quick/offline_b1_in128_out128_greedy.json",
+      "/workspace/wl-quick/offline_b1_in1024_out128_greedy.json"
+    ],
+    "out": "/workspace/runs/quick/results",
+    "quantization": null,
+    "max_num_seqs": 1,
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "tag": null
+  }
+}
