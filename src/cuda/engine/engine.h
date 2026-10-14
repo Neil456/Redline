@@ -72,6 +72,13 @@ struct StepRecord {
   double host_ms = 0;  // CPU time to schedule, build and launch the step
   float gpu_ms = 0;    // CUDA-event time of the step on the GPU
   double t_launch = 0, t_done = 0;
+  // Engine state right after scheduling the step (for traces).
+  int kv_blocks_used = 0;
+  int kv_blocks_total = 0;
+  int num_running = 0;
+  int num_waiting = 0;
+  int draft_proposed = 0;  // speculative steps only
+  int draft_accepted = 0;
 };
 
 class Engine {
@@ -155,6 +162,7 @@ class Engine {
   void finish(Sequence* seq, FinishReason reason, double now, std::vector<RequestOutput>* out);
   void maybe_release(Sequence* seq);
   void sample_memory();
+  void record_engine_state(StepRecord* r) const;
 
   EngineConfig cfg_;
   int lookahead_ = 0;

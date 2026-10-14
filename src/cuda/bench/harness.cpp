@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <thread>
 
@@ -27,6 +28,66 @@ void warmup(Engine& engine, const Workload& w, const BenchOptions& opts) {
 }
 
 }  // namespace
+
+// Compact trace: arrays of rows plus a field list, times in ms since t0.
+static void write_trace(const std::string& path, const Json& report, const std::vector<StepRecord>& steps,
+                 const std::vector<RequestOutput>& outputs, double t0) {
+  auto ms = [&](double t) { return std::round((t - t0) * 1e6) / 1e3; };
+  Json trace = Json::object();
+  trace.set("format", "redline-trace-v1");
+  for (const char* k : {"workload", "workload_settings", "engine", "duration_s", "output_tokens",
+                        "decode_throughput_tok_s", "output_throughput_tok_s", "ttft_ms", "itl_ms",
+                        "tpot_ms", "speculative", "memory"}) {
+    if (const Json* v = report.find(k)) trace.set(k, *v);
+  }
+  Json step_fields = Json::array();
+  for (const char* f : {"step", "kind", "t_launch_ms", "t_done_ms", "host_ms", "gpu_ms", "seqs",
+                        "tokens", "prefill_tokens", "decode_tokens", "tokens_out", "cuda_graph",
+                        "kv_used", "kv_total", "running", "waiting", "draft_proposed",
+                        "draft_accepted"}) {
+    step_fields.push_back(f);
+  }
+  Json rows = Json::array();
+  for (const auto& s : steps) {
+    Json r = Json::array();
+    r.push_back(s.step);
+    r.push_back(s.kind);
+    r.push_back(ms(s.t_launch));
+    r.push_back(ms(s.t_done));
+    r.push_back(std::round(s.host_ms * 1000) / 1000);
+    r.push_back(std::round(s.gpu_ms * 1000) / 1000);
+    for (int v : {s.num_seqs, s.num_tokens, s.num_prefill_tokens, s.num_decode_tokens, s.tokens_out,
+                  s.cuda_graph ? 1 : 0, s.kv_blocks_used, s.kv_blocks_total, s.num_running,
+                  s.num_waiting, s.draft_proposed, s.draft_accepted}) {
+      r.push_back(v);
+    }
+    rows.push_back(r);
+  }
+  trace.set("step_fields", step_fields);
+  trace.set("steps", rows);
+  Json req_fields = Json::array();
+  for (const char* f : {"id", "arrival_ms", "first_token_ms", "finish_ms", "prompt_tokens",
+                        "output_tokens", "preemptions", "draft_proposed", "draft_accepted"}) {
+    req_fields.push_back(f);
+  }
+  Json reqs = Json::array();
+  for (const auto& o : outputs) {
+    Json r = Json::array();
+    r.push_back(o.id);
+    r.push_back(ms(o.arrival_time));
+    r.push_back(ms(o.first_token_time));
+    r.push_back(ms(o.finish_time));
+    r.push_back(static_cast<int64_t>(o.prompt.size()));
+    r.push_back(static_cast<int64_t>(o.output_tokens.size()));
+    r.push_back(o.num_preemptions);
+    r.push_back(o.draft_proposed);
+    r.push_back(o.draft_accepted);
+    reqs.push_back(r);
+  }
+  trace.set("request_fields", req_fields);
+  trace.set("requests", reqs);
+  trace.dump_file(path, -1);
+}
 
 Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions& opts) {
   warmup(engine, workload, opts);
@@ -157,6 +218,7 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
   report.set("speculative", spec);
   report.set("memory", engine.memory_report());
   if (opts.keep_per_request) report.set("requests", per_request);
+  if (!opts.trace_path.empty()) write_trace(opts.trace_path, report, steps, outputs, t0);
   return report;
 }
 

@@ -4,6 +4,8 @@
 // overhead, peak device memory and speculative acceptance rate.
 #pragma once
 
+#include <string>
+
 #include "core/json.h"
 #include "core/workload.h"
 #include "cuda/engine/engine.h"
@@ -19,6 +21,9 @@ struct BenchOptions {
   int warmup_requests = 2;
   int warmup_tokens = 16;
   bool keep_per_request = false;  // include per-request metrics in the report
+  // When set, writes a step-by-step trace (scheduler state, CUDA-event step
+  // times, request lifetimes) for the demo's trace viewer (demo/index.html).
+  std::string trace_path;
 };
 
 Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions& opts);

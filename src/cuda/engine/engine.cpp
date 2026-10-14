@@ -448,9 +448,17 @@ Engine::InFlight Engine::launch_step(StepPlan plan) {
   r.num_decode_tokens = p.num_decode_tokens;
   r.kind = p.num_prefill_tokens == 0 ? "decode" : (p.num_decode_tokens == 0 ? "prefill" : "mixed");
   r.cuda_graph = bucket > 0;
+  record_engine_state(&r);
   r.t_launch = now_seconds();
   r.host_ms = (r.t_launch - t_start) * 1000.0;
   return f;
+}
+
+void Engine::record_engine_state(StepRecord* r) const {
+  r->kv_blocks_used = allocator_->num_used();
+  r->kv_blocks_total = allocator_->num_total() - 1;  // block 0 is the scratch block
+  r->num_running = scheduler_->num_running();
+  r->num_waiting = scheduler_->num_waiting();
 }
 
 void Engine::process_step(InFlight& f, std::vector<RequestOutput>* outputs) {
@@ -601,12 +609,13 @@ void Engine::run_spec_step(StepPlan& plan, std::vector<RequestOutput>* outputs) 
   const int32_t* tokens = tokens_host_[0].as<int32_t>();
   const float* lps = logprobs_host_[0].as<float>();
   const int32_t* counts = counts_host_.as<int32_t>();
-  int appended = 0;
+  int appended = 0, step_accepted = 0;
   for (int i = 0; i < B; ++i) {
     Sequence* seq = plan.seqs[i].seq;
     const int n = n_before[i];
     const int count = counts[i];
     const int accepted = count - 1;
+    step_accepted += accepted;
     seq->draft_proposed += K;
     seq->draft_accepted += accepted;
     seq->num_computed = n + accepted;  // target KV valid for positions [0, n - 1 + accepted]
@@ -629,6 +638,9 @@ void Engine::run_spec_step(StepPlan& plan, std::vector<RequestOutput>* outputs) 
     r.num_decode_tokens = B;
     r.tokens_out = appended;
     r.cuda_graph = bucket > 0;
+    r.draft_proposed = B * K;
+    r.draft_accepted = step_accepted;
+    record_engine_state(&r);
     r.host_ms = (t_launch - t_start) * 1000.0;
     RL_CUDA_CHECK(cudaEventElapsedTime(&r.gpu_ms, ev_start_[0], ev_stop_[0]));
     r.t_launch = t_launch;

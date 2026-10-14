@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
           "  --online                     honor workload arrival times\n"
           "  --warmup N                   warm-up requests (default 2)\n"
           "  --per-request                include per-request metrics\n"
+          "  --trace-out FILE             step-by-step trace for demo/index.html\n"
           "  --tag NAME                   label stored in the report\n%s",
           cli::engine_options_help());
       return 0;
@@ -47,6 +48,7 @@ int main(int argc, char** argv) {
     const std::string out_file = args.get("out");
     const std::string out_dir = args.get("out-dir");
     const std::string tag = args.get("tag", "redline");
+    const std::string trace_out = args.get("trace-out");
     const auto workload_files = args.get_all("workload");
     const auto synthetic = args.get_all("synthetic");
     args.check_unknown();
@@ -66,6 +68,15 @@ int main(int argc, char** argv) {
     if (!out_dir.empty()) ::mkdir(out_dir.c_str(), 0755);
     Json all = Json::array();
     for (auto& [name, w] : workloads) {
+      if (!trace_out.empty()) {
+        // One trace per workload; add the workload name when there are several.
+        std::string path = trace_out;
+        if (workloads.size() > 1) {
+          const auto dot = path.rfind(".json");
+          path = (dot == std::string::npos ? path : path.substr(0, dot)) + "__" + name + ".json";
+        }
+        opts.trace_path = path;
+      }
       Json report = run_benchmark(engine, w, opts);
       report.set("tag", tag);
       report.set("system", "redline");

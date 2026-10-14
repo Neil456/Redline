@@ -23,6 +23,16 @@ any GQA ratio up to 8.
                                          └──────────────────────┘   └────────────────────────────────────┘
 ```
 
+## Interactive tour
+
+`demo/index.html` is a self-contained page (open it in a browser) that walks
+through one decode step. It has a live figure for each idea: async scheduling
+vs CUDA graphs, the paged KV cache and scheduler, bytes moved per token for
+FP16/INT8/INT4, and speculative decoding. It also has a viewer for real
+`redline_bench --trace-out` traces and a code map whose excerpts are pulled
+from the source at build time (`python demo/build_demo.py [--trace trace.json]`).
+`docs/WALKTHROUGH.md` is the talk track for presenting it.
+
 ## What is implemented
 
 | Area | Where | Notes |
@@ -37,7 +47,7 @@ any GQA ratio up to 8.
 | **Quantized GEMM backends** | `src/cuda/gemm/` | cuBLASLt FP16 (cached heuristics, bias epilogue), cuBLASLt **INT8 W8A8** (dynamic per-token activation quantization), **CUTLASS** FP16×INT8 mixed-input tensor-core GEMM, **TensorRT-LLM** `CutlassFpAIntBGemmRunner` (INT4/INT8 fine-grained) with weight re-layout and per-shape config profiling, plus a dequantize-then-cuBLASLt fallback |
 | **Sampling** | `src/cuda/kernels/sampling.cu` | Greedy, temperature, top-k, top-p. Exact radix-select thresholds instead of a vocabulary sort, then a Gumbel-max draw with a Philox RNG keyed by (seed, position), so results don't depend on batching |
 | **Speculative decoding** | `Engine::run_spec_step`, `speculative_verify` | Draft model proposes *k* tokens and the target verifies them in one pass. Rejection sampling on the GPU is lossless (exact for greedy). Reports acceptance rate |
-| **Benchmark harness** | `src/cuda/bench/harness.*`, `apps/redline_bench.cpp` | TTFT, inter-token latency, TPOT, E2E, decode / prefill / output throughput, per-step GPU time (CUDA events), host overhead, peak VRAM, acceptance rate. NVTX ranges for Nsight Systems |
+| **Benchmark harness** | `src/cuda/bench/harness.*`, `apps/redline_bench.cpp` | TTFT, inter-token latency, TPOT, E2E, decode / prefill / output throughput, per-step GPU time (CUDA events), host overhead, peak VRAM, acceptance rate. NVTX ranges for Nsight Systems; `--trace-out` writes a step-by-step trace for the demo |
 | **Conversion & quantization** | `python/redline/convert.py`, `quantize.py` | Streams HF checkpoints into one `.rlm` (safetensors) file. INT8 per-channel / INT4 group-wise quantization with MSE clip search |
 | **Baselines & evaluation** | `python/redline/baselines/`, `eval_quality.py`, `workloads.py`, `suite.py`, `report.py` | Same workloads through HF Transformers and vLLM. Quality retention (perplexity + multiple-choice) vs FP16 HF. Reproducible workload grid (~150 workloads) |
 
@@ -172,6 +182,8 @@ apps/          redline_generate, redline_bench, redline_ref (CPU reference CLI)
 python/redline convert, quantize, format, runtime, generate, workloads, suite, baselines/, eval_quality, report
 tests/         cpp/ (host), cuda/ (GPU), python/
 scripts/       run_rtx4090.sh
+demo/          interactive tour (template.html + build_demo.py -> index.html)
+docs/          WALKTHROUGH.md (interview talk track and file map)
 ```
 
 ## Limitations

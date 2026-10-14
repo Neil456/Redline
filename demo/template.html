@@ -1,0 +1,1151 @@
+<title>Redline Engine Tour</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column of instrument panels (talk track beside a live figure), framed like a profiler timeline; a single red rule marks the "redline". */
+:root {
+  --bg: #f2f3f5;
+  --panel: #ffffff;
+  --ink: #14171b;
+  --ink-2: #4a5059;
+  --muted: #7a818b;
+  --line: #dcdfe4;
+  --grid: #e8eaee;
+  --code-bg: #f6f7f9;
+  --accent: #cc2a3b;
+  --accent-soft: rgba(204, 42, 59, 0.10);
+  --s1: #2a78d6;   /* GPU compute / decode / weights */
+  --s2: #eb6834;   /* prefill / KV traffic */
+  --s3: #1baf7a;   /* host CPU work / lm_head */
+  --s4: #eda100;   /* copies / launches */
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #6250d6;   /* draft model / speculative */
+  --good: #0ca30c;
+  --bad: #d03b3b;
+  --f-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0f12; --panel: #15191e; --ink: #eceef1; --ink-2: #b3b9c2; --muted: #7e8691;
+    --line: #2a3038; --grid: #20252c; --code-bg: #101418; --accent: #ef4b5d; --accent-soft: rgba(239, 75, 93, 0.14);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0f12; --panel: #15191e; --ink: #eceef1; --ink-2: #b3b9c2; --muted: #7e8691;
+  --line: #2a3038; --grid: #20252c; --code-bg: #101418; --accent: #ef4b5d; --accent-soft: rgba(239, 75, 93, 0.14);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1160px; margin: 0 auto; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+h2 { font-size: 1.55rem; font-weight: 700; font-stretch: 112%; letter-spacing: -0.01em; }
+h3 { font-size: 1.02rem; font-weight: 650; font-stretch: 100%; }
+p { margin: 0; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+a { color: var(--s1); }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- masthead ---- */
+.masthead { padding-block: 28px 0; }
+.brand { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.wordmark { font-family: var(--f-display); font-weight: 800; font-stretch: 125%; font-size: clamp(2.4rem, 7vw, 4.1rem);
+  letter-spacing: 0.06em; line-height: 1; }
+.redline { height: 3px; background: var(--accent); margin-block: 14px 16px; position: relative; }
+.redline::after { content: "RTX 4090 · 1008 GB/s"; position: absolute; right: 0; top: 6px; font: 600 10px var(--f-mono);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.lede { max-width: 68ch; color: var(--ink-2); font-size: 1.05rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.chip { font: 500 12px var(--f-mono); padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-2); }
+.data-note { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.data-note b { color: var(--ink-2); font-weight: 600; }
+
+nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  margin-top: 18px; padding-block: 8px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+nav.toc a { font: 500 13px var(--f-body); color: var(--ink-2); text-decoration: none; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
+nav.toc a:hover { background: var(--panel); color: var(--ink); }
+nav.toc a .n { font-family: var(--f-mono); color: var(--accent); margin-right: 5px; font-size: 11px; }
+
+/* ---- sections ---- */
+section.panel { padding-block: 34px 8px; scroll-margin-top: 56px; }
+.sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.sec-num { font: 600 12px var(--f-mono); color: var(--accent); letter-spacing: 0.08em; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.talk { display: grid; gap: 12px; color: var(--ink-2); }
+.talk .label, .label { font: 600 10.5px var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.talk ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.talk li::marker { color: var(--accent); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; margin-bottom: 12px; }
+.ctl { display: grid; gap: 3px; min-width: 0; }
+.ctl label { font-size: 12px; color: var(--muted); }
+.ctl output { font: 600 12px var(--f-mono); color: var(--ink); }
+.ctl input[type=range] { width: 150px; accent-color: var(--accent); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+select { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 5px 8px; font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
+.stat { border-top: 2px solid var(--line); padding-top: 6px; min-width: 0; }
+.stat .v { font: 600 1.25rem var(--f-display); font-stretch: 105%; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat.hot { border-top-color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.formula { font: 12px var(--f-mono); color: var(--muted); margin-top: 10px; overflow-x: auto; white-space: nowrap; }
+svg text { font-family: var(--f-mono); }
+.scroll-x { overflow-x: auto; }
+
+/* ---- pipeline ---- */
+.lanes { display: grid; gap: 10px; }
+.lane { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; align-items: center; }
+.lane-name { font: 600 10.5px var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.stage { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 10px; cursor: pointer; text-align: left;
+  font-size: 13px; line-height: 1.25; display: grid; gap: 1px; border-left: 3px solid var(--c, var(--line)); }
+.stage small { font: 11px var(--f-mono); color: var(--muted); }
+.stage:hover { border-color: var(--ink-2); border-left-color: var(--c); }
+.stage[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); border-left-color: var(--accent); }
+.arrow { color: var(--muted); font-family: var(--f-mono); }
+.layer-box { border: 1px dashed var(--line); border-radius: 8px; padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.layer-box .tag { font: 600 11px var(--f-mono); color: var(--muted); padding: 0 4px; }
+.loopback { font-size: 12px; color: var(--ink-2); display: flex; gap: 8px; align-items: center; padding-left: 84px; }
+.loopback svg { flex: none; }
+@media (max-width: 600px) { .lane { grid-template-columns: minmax(0, 1fr); } .loopback { padding-left: 0; } }
+.detail { margin-top: 14px; display: grid; gap: 10px; }
+.detail .why { color: var(--ink-2); max-width: 75ch; }
+
+/* ---- code viewer ---- */
+.code { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--code-bg); min-width: 0; }
+.code-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line);
+  font: 12px var(--f-mono); color: var(--ink-2); flex-wrap: wrap; }
+.code-head button { font: 11px var(--f-mono); border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
+.code-cap { padding: 8px 10px 0; font-size: 13px; color: var(--ink-2); }
+pre.src { margin: 0; padding: 10px 0; overflow-x: auto; font: 12.5px/1.55 var(--f-mono); counter-reset: ln var(--ln0); }
+pre.src .l { display: block; padding: 0 12px 0 0; white-space: pre; }
+pre.src .l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.6em; padding-right: 1em; text-align: right; color: var(--muted); opacity: 0.6; }
+.tk-k { color: var(--s7); font-weight: 600; }
+.tk-t { color: var(--s1); }
+.tk-c { color: var(--muted); font-style: italic; }
+.tk-s { color: var(--s6); }
+.tk-n { color: var(--s2); }
+.tk-p { color: var(--s5); }
+
+/* ---- KV playground ---- */
+.kv-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 16px; }
+@media (max-width: 760px) { .kv-wrap { grid-template-columns: minmax(0, 1fr); } }
+.pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 3px; }
+.blk { aspect-ratio: 1; max-width: 100%; border-radius: 3px; background: var(--grid); position: relative; overflow: hidden;
+  font: 600 10px var(--f-mono); color: var(--ink); display: grid; place-items: center; }
+.blk .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--c); opacity: 0.9; }
+.blk .id { position: relative; mix-blend-mode: normal; color: var(--ink); text-shadow: 0 0 3px var(--panel); }
+.blk.scratch { background: repeating-linear-gradient(135deg, var(--grid) 0 4px, var(--line) 4px 6px); }
+.blk.new { outline: 2px solid var(--accent); outline-offset: -2px; }
+.seqs { display: grid; gap: 6px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.seq { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; border-left: 4px solid var(--c, var(--line)); display: grid; gap: 4px; }
+.seq.done { opacity: 0.5; }
+.seq .row { display: flex; justify-content: space-between; gap: 6px; }
+.pill { font: 600 10.5px var(--f-mono); padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+.pill.run { border-color: var(--s1); color: var(--s1); }
+.pill.wait { border-color: var(--s4); color: var(--ink-2); }
+.pill.pre { border-color: var(--accent); color: var(--accent); }
+.bar { height: 5px; background: var(--grid); border-radius: 3px; overflow: hidden; display: flex; }
+.bar span { display: block; height: 100%; }
+.tbl { font: 11.5px var(--f-mono); color: var(--muted); word-break: break-all; }
+.log { font: 12px var(--f-mono); color: var(--ink-2); margin-top: 10px; min-height: 4.6em; display: grid; gap: 2px; }
+.log .ev-pre { color: var(--accent); }
+
+/* ---- speculative ---- */
+.spec-rows { display: grid; gap: 6px; margin-top: 10px; max-height: 260px; overflow-y: auto; }
+.spec-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; }
+.spec-row .sn { font: 11px var(--f-mono); color: var(--muted); width: 3.2em; }
+.tok { font: 12px var(--f-mono); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); }
+.tok.ok { border-color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.tok.no { border-color: var(--bad); text-decoration: line-through; color: var(--muted); }
+.tok.tg { border-color: var(--s1); background: color-mix(in srgb, var(--s1) 14%, transparent); }
+.text-out { margin-top: 10px; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+
+/* ---- trace ---- */
+.empty { border: 1px dashed var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 10px; color: var(--ink-2); }
+.empty pre { margin: 0; font: 12.5px var(--f-mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow-x: auto; }
+.charts { display: grid; gap: 18px; }
+.chart h3 { font-size: 0.95rem; margin-bottom: 4px; }
+.chart .sub { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  font: 12px var(--f-mono); color: var(--ink); box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 20; max-width: 280px; }
+
+/* ---- code map ---- */
+.map { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .map { grid-template-columns: minmax(0, 1fr); } }
+.map-list { display: grid; gap: 4px; }
+.map-item { text-align: left; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 7px 9px; cursor: pointer; display: grid; gap: 1px; }
+.map-item:hover { background: var(--panel); border-color: var(--line); }
+.map-item[aria-pressed="true"] { background: var(--panel); border-color: var(--accent); }
+.map-item b { font-size: 13.5px; font-weight: 600; }
+.map-item span { font: 11.5px var(--f-mono); color: var(--muted); word-break: break-all; }
+footer { padding-block: 40px 30px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); margin-top: 40px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand"><h1 class="wordmark">REDLINE</h1><span class="mono" style="color:var(--muted)">C++ / CUDA LLM inference runtime</span></div>
+    <div class="redline" aria-hidden="true"></div>
+    <p class="lede">Redline serves Llama-family models on a single GPU. It manages its own paged KV cache, scheduling, sampling and GPU memory, and decodes with INT8/INT4 weight-only kernels, CUDA graphs and speculative decoding. This page walks through one decode step and the ideas that make it fast. Each idea has a live figure and links to the code that implements it.</p>
+    <div class="chips" id="chips"></div>
+    <p class="data-note" id="data-note"></p>
+    <nav class="toc" aria-label="Sections">
+      <a href="#step"><span class="n">1</span>One decode step</a>
+      <a href="#async"><span class="n">2</span>Async + CUDA graphs</a>
+      <a href="#kv"><span class="n">3</span>Paged KV cache</a>
+      <a href="#bandwidth"><span class="n">4</span>Quantization</a>
+      <a href="#spec"><span class="n">5</span>Speculative decoding</a>
+      <a href="#trace"><span class="n">6</span>Real run</a>
+      <a href="#code"><span class="n">7</span>Code map</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- 1. Pipeline -->
+    <section class="panel" id="step">
+      <div class="sec-head"><span class="sec-num">01</span><h2>One decode step</h2></div>
+      <div class="card">
+        <div class="lanes" id="lanes"></div>
+        <div class="loopback" aria-hidden="false">
+          <svg width="28" height="18" viewBox="0 0 28 18"><path d="M26 2 V10 H4 V4" fill="none" stroke="var(--accent)" stroke-width="1.6"/><path d="M1 7 L4 2 L7 7" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>
+          <span>Sampled token ids stay on the GPU and feed the next step's embedding directly. The host gets a copy one step later.</span>
+        </div>
+        <div class="detail" id="stage-detail"></div>
+      </div>
+    </section>
+
+    <!-- 2. Async + graphs -->
+    <section class="panel" id="async">
+      <div class="sec-head"><span class="sec-num">02</span><h2>Keeping the GPU busy: async scheduling and CUDA graphs</h2></div>
+      <div class="grid2">
+        <div class="talk">
+          <span class="label">Talk track</span>
+          <ul>
+            <li>In a naive loop the GPU idles while the CPU reads the sampled token, checks stop conditions and builds the next batch.</li>
+            <li>Redline launches step <i>t+1</i> before reading step <i>t</i>. Next-step inputs come from the device, so the host never sits on the critical path.</li>
+            <li>A decode step is a few hundred small kernels. Launched one by one, the CPU cost can exceed the GPU work, especially for the small draft model. A CUDA graph replays the whole step with one launch. Switch the model to the 1B draft to see it.</li>
+          </ul>
+          <span class="label">Assumptions</span>
+          <p style="font-size:13px">Times come from a model with editable inputs, not measurements. Kernel counts are Redline's real launches per step: 10 per layer plus 6. GPU work defaults to the bandwidth-bound step time from section 04 at roughly 85% efficiency. Measured step times are in section 06.</p>
+        </div>
+        <div class="card">
+          <div class="controls">
+            <div class="ctl"><label for="as-model">Model</label><select id="as-model"><option value="8b">Llama 3.1 8B INT4 (target)</option><option value="1b">Llama 3.2 1B INT4 (draft)</option></select></div>
+            <div class="ctl"><label>Scheduling</label><div class="seg" id="as-mode"><button type="button" data-v="sync" aria-pressed="false">Sync</button><button type="button" data-v="async" aria-pressed="true">Async</button></div></div>
+            <div class="ctl"><label>Kernel launch</label><div class="seg" id="as-launch"><button type="button" data-v="eager" aria-pressed="false">Eager</button><button type="button" data-v="graph" aria-pressed="true">CUDA graph</button></div></div>
+            <div class="ctl"><label for="as-g">GPU work per step <output id="as-g-o"></output></label><input id="as-g" type="range" min="0.5" max="12" step="0.1" value="4.9"></div>
+            <div class="ctl"><label for="as-h">Host scheduling per step <output id="as-h-o"></output></label><input id="as-h" type="range" min="0.05" max="2" step="0.05" value="0.35"></div>
+            <div class="ctl"><label for="as-l">Launch cost per kernel <output id="as-l-o"></output></label><input id="as-l" type="range" min="1" max="12" step="0.5" value="7"></div>
+          </div>
+          <div class="scroll-x"><svg id="as-svg" width="100%" height="150" role="img" aria-label="CPU and GPU timeline"></svg></div>
+          <div class="legend" id="as-legend"></div>
+          <div class="stats" id="as-stats"></div>
+          <div class="scroll-x" style="margin-top:12px"><table id="as-table" style="width:100%;border-collapse:collapse;font-size:13px"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. KV -->
+    <section class="panel" id="kv">
+      <div class="sec-head"><span class="sec-num">03</span><h2>Paged KV cache and continuous batching</h2></div>
+      <div class="grid2">
+        <div class="talk">
+          <span class="label">Talk track</span>
+          <ul>
+            <li>The KV pool is one GPU allocation cut into 16-token blocks. A sequence owns a list of block ids (its block table), so memory grows a block at a time and never needs to be contiguous.</li>
+            <li>Every step the scheduler gives each running sequence one decode token first, then spends the remaining token budget on prefill chunks and new admissions.</li>
+            <li>When the pool runs dry, the newest sequence is preempted. Its blocks are freed and it is recomputed later, so older requests keep their latency.</li>
+          </ul>
+          <span class="label">What you are seeing</span>
+          <p style="font-size:13px">A JavaScript port of <code>Scheduler::schedule</code> on a small pool. Each square is a block, labeled with the sequence that owns it. Shrink the pool to force preemption.</p>
+        </div>
+        <div class="card">
+          <div class="controls">
+            <button class="btn primary" id="kv-play" type="button">Play</button>
+            <button class="btn" id="kv-step" type="button">Step</button>
+            <button class="btn" id="kv-burst" type="button">Add 4 requests</button>
+            <button class="btn" id="kv-reset" type="button">Reset</button>
+            <div class="ctl"><label for="kv-pool">KV pool <output id="kv-pool-o"></output></label><input id="kv-pool" type="range" min="16" max="96" step="4" value="48"></div>
+            <div class="ctl"><label for="kv-budget">Token budget per step <output id="kv-budget-o"></output></label><input id="kv-budget" type="range" min="16" max="128" step="8" value="64"></div>
+          </div>
+          <div class="kv-wrap">
+            <div style="min-width:0">
+              <div class="pool" id="kv-pool-grid" aria-label="KV block pool"></div>
+              <div class="stats" id="kv-stats"></div>
+              <div class="log" id="kv-log" aria-live="polite"></div>
+            </div>
+            <div class="seqs" id="kv-seqs"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Bandwidth -->
+    <section class="panel" id="bandwidth">
+      <div class="sec-head"><span class="sec-num">04</span><h2>Why INT4 decodes faster: bytes moved per token</h2></div>
+      <div class="grid2">
+        <div class="talk">
+          <span class="label">Talk track</span>
+          <ul>
+            <li>At small batch sizes decode is memory-bound. Every step streams every weight once, so step time is roughly bytes read ÷ memory bandwidth.</li>
+            <li>INT8 halves and INT4 quarters the weight traffic. The GEMV kernels dequantize in registers, so the GPU never writes an FP16 copy of the weights.</li>
+            <li>KV traffic grows with batch × context. Redline's attention reads each K/V vector once per GQA group instead of once per query head, which is 4× less for Llama 3.</li>
+          </ul>
+          <span class="label">Assumptions</span>
+          <p style="font-size:13px">These are bandwidth ceilings computed from the model's real shapes and the GPU's spec-sheet bandwidth. Real kernels reach a fraction of this, and the measured numbers come from <code>redline_bench</code>.</p>
+        </div>
+        <div class="card">
+          <div class="controls">
+            <div class="ctl"><label for="bw-model">Model</label><select id="bw-model"></select></div>
+            <div class="ctl"><label for="bw-gpu">GPU</label><select id="bw-gpu"></select></div>
+            <div class="ctl"><label for="bw-b">Batch <output id="bw-b-o"></output></label><input id="bw-b" type="range" min="0" max="6" step="1" value="0"></div>
+            <div class="ctl"><label for="bw-l">Context <output id="bw-l-o"></output></label><input id="bw-l" type="range" min="7" max="13" step="1" value="10"></div>
+            <div class="ctl"><label>KV cache</label><div class="seg" id="bw-kv"><button type="button" data-v="fp16" aria-pressed="true">FP16</button><button type="button" data-v="int8" aria-pressed="false">INT8</button></div></div>
+            <div class="ctl"><label>Attention</label><div class="seg" id="bw-gqa"><button type="button" data-v="grouped" aria-pressed="true">GQA-grouped</button><button type="button" data-v="naive" aria-pressed="false">Per head</button></div></div>
+          </div>
+          <div class="chart"><h3>Bytes read per decode step</h3><div class="sub" id="bw-sub"></div><div class="scroll-x"><svg id="bw-svg" width="100%" height="170" role="img" aria-label="Bytes per decode step by weight format"></svg></div></div>
+          <div class="legend" id="bw-legend"></div>
+          <div class="chart" style="margin-top:16px"><h3>Memory footprint</h3><div class="sub" id="bw-mem-sub"></div><div class="scroll-x"><svg id="bw-mem" width="100%" height="150" role="img" aria-label="VRAM footprint by weight format"></svg></div></div>
+          <div class="formula" id="bw-formula"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Speculative -->
+    <section class="panel" id="spec">
+      <div class="sec-head"><span class="sec-num">05</span><h2>Speculative decoding</h2></div>
+      <div class="grid2">
+        <div class="talk">
+          <span class="label">Talk track</span>
+          <ul>
+            <li>A small draft model (Llama 3.2 1B) proposes <i>k</i> tokens. The 8B target checks all of them in one forward pass, which costs about the same as one decode step because decode is memory-bound.</li>
+            <li>A GPU kernel accepts draft token <i>i</i> with probability min(1, p<sub>target</sub>/p<sub>draft</sub>) and resamples the first rejection from the leftover distribution. The output has exactly the target's distribution.</li>
+            <li>The benchmark reports the acceptance rate. More draft tokens only help while acceptance stays high, and the chart shows where that stops paying.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="controls">
+            <button class="btn primary" id="sp-play" type="button">Play</button>
+            <button class="btn" id="sp-step" type="button">Step</button>
+            <button class="btn" id="sp-reset" type="button">Reset</button>
+            <div class="ctl"><label for="sp-a">Per-token acceptance α <output id="sp-a-o"></output></label><input id="sp-a" type="range" min="0.3" max="0.95" step="0.01" value="0.75"></div>
+            <div class="ctl"><label for="sp-k">Draft tokens k <output id="sp-k-o"></output></label><input id="sp-k" type="range" min="1" max="8" step="1" value="4"></div>
+            <div class="ctl"><label for="sp-c">Draft cost ÷ target cost <output id="sp-c-o"></output></label><input id="sp-c" type="range" min="0.02" max="0.5" step="0.01" value="0.14"></div>
+          </div>
+          <div class="spec-rows" id="sp-rows"></div>
+          <div class="text-out" id="sp-text"></div>
+          <div class="stats" id="sp-stats"></div>
+          <div class="chart" style="margin-top:14px"><h3>Expected speedup vs draft length</h3><div class="sub">Tokens per step ÷ step cost, where a step costs k draft passes plus one target pass. Same α and cost ratio as above.</div><div class="scroll-x"><svg id="sp-svg" width="100%" height="170" role="img" aria-label="Expected speedup by number of draft tokens"></svg></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Trace -->
+    <section class="panel" id="trace">
+      <div class="sec-head"><span class="sec-num">06</span><h2>Real run: a trace from redline_bench</h2></div>
+      <div class="card" id="trace-root"></div>
+    </section>
+
+    <!-- 7. Code map -->
+    <section class="panel" id="code">
+      <div class="sec-head"><span class="sec-num">07</span><h2>Code map: where to point in the repo</h2></div>
+      <div class="map">
+        <div class="map-list" id="map-list"></div>
+        <div id="map-code" style="min-width:0"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Redline · github.com/Neil456/Redline · Regenerate this page with <code>python demo/build_demo.py [--trace trace.json]</code>. Code excerpts are extracted from the repository at build time.
+  </footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const EXCERPTS = /*__EXCERPTS__*/null;
+const TRACE_EMBEDDED = /*__TRACE__*/null;
+
+// ------------------------------------------------------------------ utils
+const $ = (s, r = document) => r.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+function h(tag, attrs = {}, ...kids) {
+  const svgTags = new Set(["svg","g","rect","line","path","text","circle","polyline","polygon","defs","pattern","title"]);
+  const e = svgTags.has(tag) ? document.createElementNS(NS, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.setAttribute("class", v);
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const tok = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = (v, d = 1) => Number(v).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: d });
+const fmtInt = (v) => Math.round(v).toLocaleString("en-US");
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+function seg(id, onchange) {
+  const root = document.getElementById(id);
+  root.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    root.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+    onchange(b.dataset.v);
+  });
+  return () => root.querySelector('button[aria-pressed="true"]').dataset.v;
+}
+function svgSize(svg) { const w = Math.max(320, svg.clientWidth || svg.parentNode.clientWidth || 640); return w; }
+const tip = $("#tip");
+function showTip(e, html) { tip.innerHTML = html; tip.hidden = false; const x = e.clientX + 14, y = e.clientY + 14;
+  const r = tip.getBoundingClientRect(); tip.style.left = Math.min(x, window.innerWidth - r.width - 8) + "px"; tip.style.top = Math.min(y, window.innerHeight - r.height - 8) + "px"; }
+function hideTip() { tip.hidden = true; }
+
+// ------------------------------------------------------------------ code highlighting
+const KW = new Set("if else for while return const constexpr auto void int float double bool true false nullptr static struct class template typename using namespace break continue switch case default sizeof new delete this public private def in not and or None True False import from as with lambda yield".split(" "));
+const TY = new Set("uint32_t int32_t int64_t uint64_t size_t int8_t uint8_t half uint4 uint2 float2 Sequence ScheduledSeq DeviceBatch BatchShape StepPlan cudaStream_t cudaGraph_t cudaGraphExec_t RowStats RowParams ArgMax LinearWeight LayerWeights KVT SampleShared MetaLayout torch Tensor".split(" "));
+function highlight(code, py) {
+  const out = [];
+  const re = py
+    ? /(#[^\n]*)|("""[\s\S]*?"""|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(\b\d+(?:\.\d+)?(?:e-?\d+)?\b)|([A-Za-z_]\w*)|([\s\S])/g
+    : /(\/\/[^\n]*)|("(?:\\.|[^"\\])*")|(#\s*\w+)|(\b0x[0-9a-fA-F]+u?\b|\b\d+(?:\.\d+)?f?u?\b)|([A-Za-z_]\w*)|([\s\S])/g;
+  let m;
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  while ((m = re.exec(code))) {
+    if (py) {
+      if (m[1]) out.push(`<span class="tk-c">${esc(m[1])}</span>`);
+      else if (m[2]) out.push(`<span class="tk-s">${esc(m[2])}</span>`);
+      else if (m[3]) out.push(`<span class="tk-n">${m[3]}</span>`);
+      else if (m[4]) out.push(KW.has(m[4]) ? `<span class="tk-k">${m[4]}</span>` : TY.has(m[4]) ? `<span class="tk-t">${m[4]}</span>` : m[4]);
+      else out.push(esc(m[5]));
+    } else {
+      if (m[1]) out.push(`<span class="tk-c">${esc(m[1])}</span>`);
+      else if (m[2]) out.push(`<span class="tk-s">${esc(m[2])}</span>`);
+      else if (m[3]) out.push(`<span class="tk-p">${esc(m[3])}</span>`);
+      else if (m[4]) out.push(`<span class="tk-n">${m[4]}</span>`);
+      else if (m[5]) out.push(KW.has(m[5]) ? `<span class="tk-k">${m[5]}</span>` : TY.has(m[5]) ? `<span class="tk-t">${m[5]}</span>` : m[5]);
+      else out.push(esc(m[6]));
+    }
+  }
+  return out.join("");
+}
+function codeBlock(key) {
+  const e = EXCERPTS && EXCERPTS[key];
+  if (!e) return h("div", { class: "empty" }, `Excerpt "${key}" not embedded. Build the page with python demo/build_demo.py.`);
+  const ref = `${e.file}:${e.start}`;
+  const lines = highlight(e.code, e.file.endsWith(".py")).split("\n").map(l => `<span class="l">${l || " "}</span>`).join("");
+  const copy = h("button", { type: "button", onclick: async (ev) => {
+    const b = ev.currentTarget;
+    try { await navigator.clipboard.writeText(ref); b.textContent = "copied"; }
+    catch (err) { const r = document.createRange(); r.selectNodeContents(b.previousSibling); getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = "selected"; }
+    setTimeout(() => (b.textContent = "copy path"), 1400);
+  } }, "copy path");
+  return h("div", { class: "code" },
+    h("div", { class: "code-head" }, h("span", {}, `${e.file}  ·  lines ${e.start}–${e.end}`), copy),
+    h("div", { class: "code-cap" }, e.caption),
+    h("pre", { class: "src", style: `--ln0:${e.start - 1}`, html: lines }));
+}
+
+// ------------------------------------------------------------------ chips + data note
+const TRACE_STATE = { trace: TRACE_EMBEDDED, source: TRACE_EMBEDDED ? "embedded" : null };
+function renderHeader() {
+  const chips = ["Llama 3.1 8B", "RTX 4090 · sm_89", "FP16 / INT8 / INT4", "paged KV", "CUDA graphs", "async decode", "speculative decoding", "CUDA events + NVTX"];
+  $("#chips").replaceChildren(...chips.map(c => h("span", { class: "chip" }, c)));
+  const t = TRACE_STATE.trace;
+  $("#data-note").replaceChildren(
+    h("b", {}, "Data on this page. "),
+    "Sections 02–05 are models and simulations, and each states its assumptions. ",
+    t ? h("span", {}, "Section 06 shows a measured trace: ", h("b", {}, t.workload || "workload"), ".")
+      : "Section 06 shows measured data once you load a trace from redline_bench.");
+}
+
+// ------------------------------------------------------------------ 1. pipeline
+const STAGES = [
+  { lane: "Host", items: [
+    { id: "sched", name: "Scheduler", sub: "continuous batching", c: "--s3",
+      why: "Decides which sequences run this step and how many tokens each processes: decode tokens first, then chunked prefill within a token budget. Allocates KV blocks and preempts the newest sequence if the pool is full.",
+      code: ["scheduler", "block_alloc"] },
+    { id: "build", name: "Batch builder", sub: "positions · KV slots", c: "--s3",
+      why: "Turns the plan into flat arrays: token ids (or a pointer to last step's samples on the GPU), positions, physical KV slot per token, block tables, attention work lists and sampling parameters. Everything goes into one pinned buffer.",
+      code: ["batch_add"] },
+    { id: "h2d", name: "1 × H2D copy", sub: "pinned → device", c: "--s4",
+      why: "One cudaMemcpyAsync uploads all step metadata from a pinned staging ring. A pinned source is required for a truly asynchronous copy, and a ring of 8 slots lets the host fill the next one while the previous copy is still in flight.",
+      code: ["upload"] },
+  ] },
+  { lane: "GPU", items: [
+    { id: "graph", name: "Graph replay", sub: "one launch", c: "--s1",
+      why: "Pure decode steps are padded to a batch-size bucket and replayed as a captured CUDA graph, about 300 kernels with a single launch. Mixed prefill/decode steps run eagerly.",
+      code: ["launch", "capture"] },
+    { id: "embed", name: "Embedding", sub: "ids from device", c: "--s1",
+      why: "Input ids for decode come straight from the previous step's sample buffer on the GPU (resolve_input_ids), so the host never sits on the critical path.",
+      code: ["step_async"] },
+    { group: "× 32 layers", items: [
+      { id: "qkv", name: "QKV GEMV", sub: "INT4 weights", c: "--s1",
+        why: "Fused Q/K/V projection. For decode (≤ 8 rows) a weight-only GEMV streams INT4 weights with 16-byte loads and dequantizes in registers. Larger batches go to CUTLASS, cuBLASLt W8A8, TensorRT-LLM or dequant + cuBLASLt.",
+        code: ["gemv_w4", "linear_dispatch"] },
+      { id: "rope", name: "RoPE + KV write", sub: "paged, FP16/INT8", c: "--s1",
+        why: "Applies rotary embeddings to Q and K and writes K/V straight into this token's slot in the paged cache, with an optional INT8 quantization per (token, head).",
+        code: ["rope_kv"] },
+      { id: "attn", name: "Paged attention", sub: "GQA split-K", c: "--s1",
+        why: "Flash-decoding: the context is split into 256-key partitions processed in parallel, then merged. One CTA serves all query heads that share a KV head, so each K/V vector is read once per group.",
+        code: ["attn_decode"] },
+      { id: "mlp", name: "O + MLP", sub: "fused norm, SwiGLU", c: "--s1",
+        why: "Output projection, then the fused residual-add RMSNorm and the SwiGLU MLP. Activation buffers are reused across phases, so the whole forward needs only a few preallocated buffers.",
+        code: ["forward"] },
+    ] },
+    { id: "sample", name: "Sampling", sub: "top-k/p · Philox", c: "--s7",
+      why: "Greedy, temperature, top-k and top-p on the GPU. Radix select finds exact thresholds without sorting 128K logits. A Gumbel-max draw keyed by (seed, position) makes samples independent of batch composition.",
+      code: ["sampling", "gumbel"] },
+    { id: "d2h", name: "D2H ids", sub: "pinned, one step late", c: "--s4",
+      why: "Only the sampled ids come back, a few bytes into pinned memory. With async scheduling the host reads step t's tokens after it has already launched step t+1.",
+      code: ["step_async"] },
+  ] },
+];
+let currentStage = "attn";
+function renderPipeline() {
+  const lanes = $("#lanes");
+  lanes.replaceChildren();
+  const stageBtn = (s) => h("button", { type: "button", class: "stage", style: `--c: var(${s.c})`, "aria-pressed": String(s.id === currentStage),
+    onclick: () => { currentStage = s.id; renderPipeline(); } }, h("span", {}, s.name), h("small", {}, s.sub));
+  for (const lane of STAGES) {
+    const flow = h("div", { class: "flow" });
+    lane.items.forEach((s, i) => {
+      if (i) flow.append(h("span", { class: "arrow", "aria-hidden": "true" }, "→"));
+      if (s.group) {
+        const box = h("div", { class: "layer-box" }, h("span", { class: "tag" }, s.group));
+        s.items.forEach((x, j) => { if (j) box.append(h("span", { class: "arrow", "aria-hidden": "true" }, "→")); box.append(stageBtn(x)); });
+        flow.append(box);
+      } else flow.append(stageBtn(s));
+    });
+    lanes.append(h("div", { class: "lane" }, h("div", { class: "lane-name" }, lane.lane), flow));
+  }
+  const all = STAGES.flatMap(l => l.items.flatMap(s => s.group ? s.items : [s]));
+  const s = all.find(x => x.id === currentStage);
+  $("#stage-detail").replaceChildren(
+    h("h3", {}, s.name), h("p", { class: "why" }, s.why), ...s.code.map(codeBlock));
+}
+
+// ------------------------------------------------------------------ 2. async + graphs
+// Launches per step: 10 per layer (qkv, rope+kv, decode attn, attn reduce, o, add+norm, gate_up, silu, down, add+norm)
+// plus resolve ids, embedding, first norm, gather, lm_head, sampling.
+const AS_PRESETS = { "8b": { layers: 32, g: 4.9 }, "1b": { layers: 16, g: 1.1 } };
+let KERNELS_PER_STEP = AS_PRESETS["8b"].layers * 10 + 6;
+$("#as-model").addEventListener("change", () => {
+  const p = AS_PRESETS[$("#as-model").value];
+  KERNELS_PER_STEP = p.layers * 10 + 6; $("#as-g").value = p.g; renderAsync();
+});
+const asMode = seg("as-mode", renderAsync);
+const asLaunch = seg("as-launch", renderAsync);
+["as-g", "as-h", "as-l"].forEach(id => $("#" + id).addEventListener("input", renderAsync));
+function simulate({ async, graph, g, hst, lk }) {
+  const N = 6, p = 0.05;
+  const L = graph ? 0.02 : KERNELS_PER_STEP * lk / 1000;
+  const cpu = [], gpu = [], gEnd = [];
+  let t = 0, gpuFree = 0;
+  for (let s = 0; s < N; s++) {
+    cpu.push({ a: t, b: t + hst, k: "plan", s }); t += hst;
+    const la = t; cpu.push({ a: t, b: t + L, k: "launch", s }); t += L;
+    const gs = Math.max(gpuFree, graph ? t : la + lk / 1000);
+    const ge = Math.max(gs + g, t + (graph ? 0 : g / KERNELS_PER_STEP));
+    if (gs > gpuFree + 1e-9 && s > 0) gpu.push({ a: gpuFree, b: gs, k: "idle" });
+    gpu.push({ a: gs, b: ge, k: "gpu", s }); gpuFree = ge; gEnd[s] = ge;
+    if (!async) {
+      if (t < ge) cpu.push({ a: t, b: ge, k: "wait" });
+      t = Math.max(t, ge); cpu.push({ a: t, b: t + p, k: "process", s }); t += p;
+    } else if (s > 0) {
+      if (t < gEnd[s - 1]) cpu.push({ a: t, b: gEnd[s - 1], k: "wait" });
+      t = Math.max(t, gEnd[s - 1]); cpu.push({ a: t, b: t + p, k: "process", s: s - 1 }); t += p;
+    }
+  }
+  const stepMs = (gEnd[N - 1] - gEnd[N - 3]) / 2;
+  return { cpu, gpu, end: Math.max(t, gpuFree), stepMs, busy: g / stepMs, gEnd };
+}
+function asParams() {
+  return { async: asMode() === "async", graph: asLaunch() === "graph", g: +$("#as-g").value, hst: +$("#as-h").value, lk: +$("#as-l").value };
+}
+function renderAsync() {
+  const P = asParams();
+  $("#as-g-o").textContent = fmt(P.g) + " ms";
+  $("#as-h-o").textContent = fmt(P.hst, 2) + " ms";
+  $("#as-l-o").textContent = fmt(P.lk) + " µs";
+  const r = simulate(P);
+  const svg = $("#as-svg"), W = svgSize(svg), H = 150, x0 = 70, x1 = W - 10;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.replaceChildren();
+  const sx = (t) => x0 + (t / r.end) * (x1 - x0);
+  const lanes = [{ y: 22, name: "CPU", items: r.cpu }, { y: 82, name: "GPU", items: r.gpu }];
+  const color = { plan: tok("--s3"), launch: tok("--s4"), process: tok("--s3"), gpu: tok("--s1") };
+  const defs = h("defs", {}, h("pattern", { id: "hatch", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+    h("rect", { width: 6, height: 6, fill: tok("--accent-soft") }), h("line", { x1: 0, y1: 0, x2: 0, y2: 6, stroke: tok("--accent"), "stroke-width": 1.4 })),
+    h("pattern", { id: "hatch2", width: 6, height: 6, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" },
+    h("rect", { width: 6, height: 6, fill: tok("--panel") }), h("line", { x1: 0, y1: 0, x2: 0, y2: 6, stroke: tok("--line"), "stroke-width": 1.4 })));
+  svg.append(defs);
+  for (const lane of lanes) {
+    svg.append(h("text", { x: 0, y: lane.y + 24, "font-size": 11, fill: tok("--muted") }, lane.name));
+    svg.append(h("rect", { x: x0, y: lane.y, width: x1 - x0, height: 40, fill: tok("--bg"), rx: 3 }));
+    for (const it of lane.items) {
+      const w = Math.max(1, sx(it.b) - sx(it.a));
+      const fill = it.k === "idle" ? "url(#hatch)" : it.k === "wait" ? "url(#hatch2)" : color[it.k];
+      const rect = h("rect", { x: sx(it.a), y: lane.y + (it.k === "process" ? 8 : 0), width: w, height: it.k === "process" ? 24 : 40, fill, rx: 2,
+        opacity: it.k === "process" ? 0.6 : 1 });
+      const label = { plan: "plan + build", launch: P.graph ? "graph launch" : `launch ${KERNELS_PER_STEP} kernels`, process: "read ids", gpu: "step", idle: "GPU idle", wait: "CPU waits" }[it.k];
+      rect.addEventListener("mousemove", (e) => showTip(e, `${label}${it.s != null ? " · step " + it.s : ""}<br>${fmt(it.a, 2)}–${fmt(it.b, 2)} ms (${fmt(it.b - it.a, 2)} ms)`));
+      rect.addEventListener("mouseleave", hideTip);
+      svg.append(rect);
+      if (it.k === "gpu" && w > 26) svg.append(h("text", { x: sx(it.a) + 5, y: lane.y + 24, "font-size": 11, fill: "#fff" }, "t" + it.s));
+    }
+  }
+  // time axis
+  const ticks = 5;
+  for (let i = 0; i <= ticks; i++) {
+    const t = r.end * i / ticks, x = sx(t);
+    svg.append(h("line", { x1: x, x2: x, y1: 126, y2: 130, stroke: tok("--muted") }));
+    svg.append(h("text", { x, y: 143, "font-size": 10, fill: tok("--muted"), "text-anchor": i === 0 ? "start" : i === ticks ? "end" : "middle" }, fmt(t, 1) + " ms"));
+  }
+  $("#as-legend").replaceChildren(
+    ...[["--s3", "host: plan, build, read ids"], ["--s4", "kernel launch"], ["--s1", "GPU step"]].map(([c, l]) => h("span", {}, h("i", { style: `background:var(${c})` }), l)),
+    h("span", {}, h("i", { style: `background:var(--accent-soft);outline:1px solid var(--accent)` }), "GPU idle"));
+  const tps = 1000 / r.stepMs;
+  $("#as-stats").replaceChildren(
+    stat(fmt(r.stepMs, 2) + " ms", "step time (steady state)", true),
+    stat(fmt(100 * Math.min(1, r.busy), 0) + "%", "GPU busy"),
+    stat(fmt(tps, 0), "decode steps / s"),
+    stat(fmt(P.graph ? 0.02 : KERNELS_PER_STEP * P.lk / 1000, 2) + " ms", "launch cost per step"));
+  const rows = [["sync", "eager"], ["sync", "graph"], ["async", "eager"], ["async", "graph"]].map(([m, l]) => {
+    const q = simulate({ ...P, async: m === "async", graph: l === "graph" });
+    return { m, l, ms: q.stepMs, busy: q.busy };
+  });
+  const base = rows[0].ms;
+  const tbl = $("#as-table");
+  tbl.replaceChildren(h("tr", {}, ...["scheduling", "launch", "step time", "GPU busy", "vs sync + eager"].map(t => h("th", { style: "text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:4px 6px;border-bottom:1px solid var(--line)" }, t))),
+    ...rows.map(r2 => h("tr", { style: r2.m === (P.async ? "async" : "sync") && r2.l === (P.graph ? "graph" : "eager") ? "background:var(--accent-soft)" : "" },
+      h("td", { style: "padding:4px 6px" }, r2.m), h("td", { style: "padding:4px 6px" }, r2.l === "graph" ? "CUDA graph" : "eager"),
+      h("td", { class: "mono", style: "padding:4px 6px" }, fmt(r2.ms, 2) + " ms"), h("td", { class: "mono", style: "padding:4px 6px" }, fmt(100 * Math.min(1, r2.busy), 0) + "%"),
+      h("td", { class: "mono", style: "padding:4px 6px" }, (base / r2.ms).toFixed(2) + "×"))));
+}
+function stat(v, k, hot) { return h("div", { class: "stat" + (hot ? " hot" : "") }, h("div", { class: "v" }, v), h("div", { class: "k" }, k)); }
+
+// ------------------------------------------------------------------ 3. KV playground
+const BS = 16, MAX_SEQS = 6, SLOT_COLORS = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s7"];
+const KV = { rng: null, pool: 48, budget: 64, seqs: [], free: [], owner: [], step: 0, nextId: 1, preemptions: 0, log: [], fresh: new Set(), timer: null };
+function kvReset() {
+  KV.rng = mulberry32(7);
+  KV.pool = +$("#kv-pool").value; KV.budget = +$("#kv-budget").value;
+  KV.seqs = []; KV.step = 0; KV.nextId = 1; KV.preemptions = 0; KV.log = []; KV.fresh = new Set(); KV.admitSeq = 0; KV.lastPlan = null;
+  KV.free = []; for (let b = KV.pool - 1; b >= 1; b--) KV.free.push(b);   // block 0 = scratch
+  KV.owner = new Array(KV.pool).fill(0);
+  for (let i = 0; i < 6; i++) kvAddRequest();
+  kvRender();
+}
+function kvAddRequest() {
+  const r = KV.rng;
+  KV.seqs.push({ id: KV.nextId++, prompt: 20 + Math.floor(r() * 70), maxNew: 16 + Math.floor(r() * 48), gen: 0, computed: 0,
+    blocks: [], status: "waiting", slot: -1, preempted: 0, admittedAt: -1 });
+}
+const running = () => KV.seqs.filter(s => s.status === "running");
+const waiting = () => KV.seqs.filter(s => s.status === "waiting");
+function total(s) { return s.prompt + s.gen; }
+function ensureBlocks(s, positions) {
+  const need = Math.ceil(positions / BS);
+  while (s.blocks.length < need) {
+    if (!KV.free.length) return false;
+    const b = KV.free.pop(); s.blocks.push(b); KV.owner[b] = s.id; KV.fresh.add(b);
+  }
+  return true;
+}
+function freeBlocks(s) { for (let i = s.blocks.length - 1; i >= 0; i--) { KV.free.push(s.blocks[i]); KV.owner[s.blocks[i]] = 0; } s.blocks = []; }
+function preempt(s) {
+  freeBlocks(s); s.computed = 0; s.status = "waiting"; s.slot = -1; s.preempted++; KV.preemptions++;
+  // back to the front of the queue
+  KV.seqs.splice(KV.seqs.indexOf(s), 1); const firstWait = KV.seqs.findIndex(x => x.status === "waiting");
+  KV.seqs.splice(firstWait < 0 ? KV.seqs.length : firstWait, 0, s);
+  KV.log.push({ t: `step ${KV.step}: pool full → preempted #${s.id} (freed its blocks; it will be recomputed)`, pre: true });
+}
+function kvStep() {
+  KV.fresh = new Set();
+  let budget = KV.budget; const plan = [];
+  // decode first, oldest first (admission order)
+  const run = running().sort((a, b) => a.admittedAt - b.admittedAt);
+  for (let i = 0; i < run.length; i++) {
+    const s = run[i];
+    if (s.status !== "running" || budget <= 0) continue;
+    if (total(s) - s.computed !== 1) continue;
+    while (!ensureBlocks(s, s.computed + 1)) {
+      const live = running().sort((a, b) => a.admittedAt - b.admittedAt);
+      const victim = live[live.length - 1];
+      if (victim === s || plan.some(p => p.s === victim)) { preempt(s); break; }
+      preempt(victim);
+    }
+    if (s.status !== "running") continue;
+    plan.push({ s, n: 1 }); s.computed += 1; budget -= 1;
+  }
+  // prefill: running mid-prefill, then admissions
+  for (const s of running().sort((a, b) => a.admittedAt - b.admittedAt)) {
+    const un = total(s) - s.computed; if (un <= 1 || budget <= 0) continue;
+    const n = Math.min(un, budget); if (!ensureBlocks(s, s.computed + n)) break;
+    plan.push({ s, n }); s.computed += n; budget -= n;
+  }
+  for (const s of waiting()) {
+    if (budget <= 0 || running().length >= MAX_SEQS) break;
+    const n = Math.min(total(s) - s.computed, budget);
+    if (!ensureBlocks(s, s.computed + n)) { freeBlocks(s); break; }
+    const used = new Set(running().map(x => x.slot)); let slot = 0; while (used.has(slot)) slot++;
+    s.status = "running"; s.slot = slot; s.admittedAt = KV.admitSeq++;
+    plan.push({ s, n }); s.computed += n; budget -= n;
+    KV.log.push({ t: `step ${KV.step}: admitted #${s.id} (${total(s)} tokens to prefill${s.preempted ? ", recompute after preemption" : ""})` });
+  }
+  // Sequences stuck mid-prefill can exhaust the pool; free the newest (as Scheduler::schedule does).
+  if (!plan.length && running().length > 1) { const live = running().sort((a, b) => a.admittedAt - b.admittedAt); preempt(live[live.length - 1]); }
+  // "GPU": sequences whose last position was computed sample one token
+  let pre = 0, dec = 0;
+  for (const p of plan) {
+    if (p.n === 1 && total(p.s) - p.s.computed === 0 && p.s.gen > 0) dec++; else pre += p.n;
+    if (p.s.computed === total(p.s)) {
+      p.s.gen++;
+      if (p.s.gen >= p.s.maxNew) {
+        const nb = p.s.blocks.length; freeBlocks(p.s); p.s.status = "done"; p.s.slot = -1;
+        KV.log.push({ t: `step ${KV.step}: #${p.s.id} finished (${p.s.gen} tokens) → freed ${nb} blocks` });
+      }
+    }
+  }
+  KV.lastPlan = { pre, dec, seqs: plan.length };
+  KV.step++;
+  if (KV.step % 9 === 0 && KV.seqs.filter(s => s.status !== "done").length < 9) kvAddRequest();
+  if (KV.log.length > 4) KV.log = KV.log.slice(-4);
+  kvRender();
+}
+function kvRender() {
+  $("#kv-pool-o").textContent = `${KV.pool} blocks · ${KV.pool * BS} tokens`;
+  $("#kv-budget-o").textContent = KV.budget;
+  const byId = new Map(KV.seqs.map(s => [s.id, s]));
+  const grid = $("#kv-pool-grid");
+  grid.replaceChildren(...Array.from({ length: KV.pool }, (_, b) => {
+    if (b === 0) return h("div", { class: "blk scratch", title: "block 0: scratch block for CUDA-graph padding" });
+    const owner = byId.get(KV.owner[b]);
+    if (!owner) return h("div", { class: "blk", title: `block ${b}: free` });
+    const idx = owner.blocks.indexOf(b);
+    const filled = clamp(owner.computed - idx * BS, 0, BS);
+    return h("div", { class: "blk" + (KV.fresh.has(b) ? " new" : ""), style: `--c: var(${SLOT_COLORS[owner.slot] || "--muted"})`,
+      title: `block ${b}: sequence #${owner.id}, entry ${idx} of its block table, ${filled}/${BS} tokens` },
+      h("div", { class: "fill", style: { height: (100 * filled / BS) + "%" } }), h("span", { class: "id" }, owner.id));
+  }));
+  const used = KV.pool - 1 - KV.free.length;
+  const live = KV.seqs.filter(s => s.status === "running");
+  const stored = live.reduce((a, s) => a + s.computed, 0);
+  const contiguous = live.reduce((a, s) => a + Math.ceil((s.prompt + s.maxNew) / BS), 0);
+  $("#kv-stats").replaceChildren(
+    stat(`${used}/${KV.pool - 1}`, "blocks in use", true),
+    stat(`${live.length}/${MAX_SEQS}`, "running sequences"),
+    stat(waiting().length, "waiting"),
+    stat(KV.preemptions, "preemptions"),
+    stat(used ? fmt(100 * stored / (used * BS), 0) + "%" : "–", "allocated slots holding tokens"),
+    stat(contiguous ? fmtInt(contiguous) : "–", "blocks a max-length contiguous reservation would need"));
+  const lp = KV.lastPlan;
+  $("#kv-log").replaceChildren(
+    h("div", {}, `step ${KV.step}` + (lp ? ` · last step: ${lp.seqs} sequences, ${lp.dec} decode tokens, ${lp.pre} prefill tokens` : "")),
+    ...KV.log.map(l => h("div", { class: l.pre ? "ev-pre" : "" }, l.t)));
+  const order = [...KV.seqs].sort((a, b) => ({ running: 0, waiting: 1, done: 2 }[a.status] - { running: 0, waiting: 1, done: 2 }[b.status]) || a.id - b.id);
+  $("#kv-seqs").replaceChildren(...order.map(s => {
+    const pill = s.status === "running" ? h("span", { class: "pill run" }, total(s) - s.computed > 1 ? "prefill" : "decode")
+      : s.status === "waiting" ? h("span", { class: s.preempted ? "pill pre" : "pill wait" }, s.preempted ? "preempted" : "waiting")
+      : h("span", { class: "pill" }, "done");
+    const tot = s.prompt + s.maxNew;
+    return h("div", { class: "seq" + (s.status === "done" ? " done" : ""), style: s.slot >= 0 ? `--c: var(${SLOT_COLORS[s.slot]})` : "" },
+      h("div", { class: "row" }, h("b", {}, `#${s.id}`), pill),
+      h("div", { class: "bar", title: "prompt (darker) and generated tokens" },
+        h("span", { style: { width: (100 * Math.min(s.computed, s.prompt) / tot) + "%", background: `var(${SLOT_COLORS[s.slot] || "--muted"})`, opacity: 0.55 } }),
+        h("span", { style: { width: (100 * s.gen / tot) + "%", background: `var(${SLOT_COLORS[s.slot] || "--muted"})` } })),
+      h("div", { class: "tbl" }, `${s.prompt}+${s.gen}/${s.maxNew} tok · blocks [${s.blocks.join(", ")}]`));
+  }));
+}
+function kvPlay(on) {
+  if (on === undefined) on = !KV.timer;
+  clearInterval(KV.timer); KV.timer = null;
+  if (on) KV.timer = setInterval(() => {
+    if (!KV.seqs.some(s => s.status !== "done")) { kvPlay(false); return; }
+    kvStep();
+  }, 520);
+  $("#kv-play").textContent = KV.timer ? "Pause" : "Play";
+}
+$("#kv-play").addEventListener("click", () => kvPlay());
+$("#kv-step").addEventListener("click", () => { kvPlay(false); kvStep(); });
+$("#kv-burst").addEventListener("click", () => { for (let i = 0; i < 4; i++) kvAddRequest(); kvRender(); });
+$("#kv-reset").addEventListener("click", () => { kvPlay(false); kvReset(); });
+$("#kv-pool").addEventListener("change", () => { kvPlay(false); kvReset(); });
+$("#kv-pool").addEventListener("input", () => { $("#kv-pool-o").textContent = `${$("#kv-pool").value} blocks · ${$("#kv-pool").value * BS} tokens`; });
+$("#kv-budget").addEventListener("input", () => { KV.budget = +$("#kv-budget").value; $("#kv-budget-o").textContent = KV.budget; });
+
+// ------------------------------------------------------------------ 4. bandwidth
+const MODELS = {
+  "Llama 3.1 8B": { V: 128256, H: 4096, I: 14336, L: 32, Hq: 32, Hkv: 8, D: 128, tied: false },
+  "Llama 3.2 1B": { V: 128256, H: 2048, I: 8192, L: 16, Hq: 32, Hkv: 8, D: 64, tied: true },
+  "Mistral 7B v0.3": { V: 32768, H: 4096, I: 14336, L: 32, Hq: 32, Hkv: 8, D: 128, tied: false },
+  "TinyLlama 1.1B": { V: 32000, H: 2048, I: 5632, L: 22, Hq: 32, Hkv: 4, D: 64, tied: false },
+};
+const GPUS = { "RTX 4090 (1008 GB/s, 24 GB)": [1008, 24], "RTX 3090 (936 GB/s, 24 GB)": [936, 24], "L4 (300 GB/s, 24 GB)": [300, 24],
+  "A100 80GB (2039 GB/s)": [2039, 80], "H100 SXM (3350 GB/s, 80 GB)": [3350, 80] };
+const BATCHES = [1, 2, 4, 8, 16, 32, 64];
+$("#bw-model").replaceChildren(...Object.keys(MODELS).map(k => h("option", { value: k }, k)));
+$("#bw-gpu").replaceChildren(...Object.keys(GPUS).map(k => h("option", { value: k }, k)));
+const bwKv = seg("bw-kv", renderBandwidth), bwGqa = seg("bw-gqa", renderBandwidth);
+["bw-model", "bw-gpu", "bw-b", "bw-l"].forEach(id => $("#" + id).addEventListener("input", renderBandwidth));
+function bytesFor(m, fmtW, fmtHead) {
+  const lin = (n, k, f) => f === "fp16" ? n * k * 2 : f === "int8" ? n * k + n * 2 : n * k / 2 + n * (k / 128) * 4;
+  const perLayer = lin(m.Hq * m.D + 2 * m.Hkv * m.D, m.H, fmtW) + lin(m.H, m.Hq * m.D, fmtW) + lin(2 * m.I, m.H, fmtW) + lin(m.H, m.I, fmtW);
+  return { linear: perLayer * m.L, head: lin(m.V, m.H, fmtHead), embed: m.V * m.H * 2 };
+}
+function renderBandwidth() {
+  const m = MODELS[$("#bw-model").value], [bw, cap] = GPUS[$("#bw-gpu").value];
+  const B = BATCHES[+$("#bw-b").value], Lctx = 2 ** +$("#bw-l").value;
+  const kv = bwKv(), grouped = bwGqa() === "grouped";
+  $("#bw-b-o").textContent = B; $("#bw-l-o").textContent = fmtInt(Lctx) + " tokens";
+  const G = m.Hq / m.Hkv;
+  const kvTok = m.L * 2 * m.Hkv * m.D * (kv === "fp16" ? 2 : 1) + (kv === "int8" ? m.L * 2 * m.Hkv * 4 : 0);
+  const kvStep = B * Lctx * kvTok * (grouped ? 1 : G);
+  const rows = [["FP16", "fp16", "fp16"], ["INT8", "int8", "int8"], ["INT4 g128", "int4", "int8"]].map(([name, w, head]) => {
+    const b = bytesFor(m, w, head);
+    const stepBytes = b.linear + b.head + kvStep;
+    return { name, linear: b.linear, head: b.head, kv: kvStep, step: stepBytes, tps: B * bw * 1e9 / stepBytes,
+      memWeights: b.linear + b.head + (m.tied && head === "fp16" ? 0 : b.embed), memKv: B * Lctx * kvTok };
+  });
+  $("#bw-sub").textContent = `Batch ${B}, context ${fmtInt(Lctx)}, ${kv.toUpperCase()} KV. Right column: bandwidth ceiling = batch × ${fmtInt(bw)} GB/s ÷ bytes per step. LM head stored INT8 for INT8/INT4.`;
+  const series = [["linear", "--s1", "decoder weights"], ["head", "--s3", "LM head"], ["kv", "--s2", "KV cache reads"]];
+  drawHBars($("#bw-svg"), rows, series, (r) => r.step, (v) => fmt(v / 1e9, 2) + " GB", (r) => `≤ ${fmtInt(r.tps)} tok/s`);
+  $("#bw-legend").replaceChildren(...series.map(([, c, l]) => h("span", {}, h("i", { style: `background:var(${c})` }), l)));
+  const memSeries = [["memWeights", "--s1", "weights"], ["memKv", "--s2", "KV for batch × context"]];
+  $("#bw-mem-sub").textContent = `Weights plus a KV cache sized for ${B} × ${fmtInt(Lctx)} tokens, against ${cap} GB of device memory (activations and the CUDA context add roughly 1 GB more).`;
+  drawHBars($("#bw-mem"), rows, memSeries, (r) => r.memWeights + r.memKv, (v) => fmt(v / 1e9, 1) + " GB",
+    (r) => (r.memWeights + r.memKv) / 1e9 > cap ? "does not fit" : `${fmt(100 * (r.memWeights + r.memKv) / 1e9 / cap, 0)}% of ${cap} GB`, cap * 1e9);
+  const r16 = rows[0], r4 = rows[2];
+  $("#bw-formula").textContent = `INT4 vs FP16 at this setting: ${fmt(r16.step / r4.step, 2)}× fewer bytes per step → ${fmt(r4.tps / r16.tps, 2)}× higher ceiling · weights ${fmt(r16.memWeights / 1e9, 1)} → ${fmt(r4.memWeights / 1e9, 1)} GB (${fmt(100 * (1 - r4.memWeights / r16.memWeights), 0)}% less)`;
+}
+function drawHBars(svg, rows, series, totalOf, fmtV, right, capLine) {
+  const W = svgSize(svg), rowH = 30, top = 8, left = 74, rightW = 128, H = top + rows.length * (rowH + 14) + 22;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.replaceChildren();
+  const max = Math.max(...rows.map(totalOf), capLine || 0) * 1.04;
+  const sx = (v) => left + (v / max) * (W - left - rightW);
+  // gridlines
+  for (let i = 0; i <= 4; i++) {
+    const v = max * i / 4, x = sx(v);
+    svg.append(h("line", { x1: x, x2: x, y1: top - 4, y2: H - 20, stroke: tok("--grid") }));
+    svg.append(h("text", { x, y: H - 6, "font-size": 10, fill: tok("--muted"), "text-anchor": i === 0 ? "start" : "middle" }, fmtV(v)));
+  }
+  if (capLine) {
+    const x = sx(capLine);
+    svg.append(h("line", { x1: x, x2: x, y1: top - 4, y2: H - 20, stroke: tok("--accent"), "stroke-width": 2, "stroke-dasharray": "4 3" }));
+    svg.append(h("text", { x: x - 4, y: top + 6, "font-size": 10, fill: tok("--accent"), "text-anchor": "end" }, "device memory"));
+  }
+  rows.forEach((r, i) => {
+    const y = top + i * (rowH + 14);
+    svg.append(h("text", { x: 0, y: y + rowH / 2 + 4, "font-size": 12, fill: tok("--ink") }, r.name));
+    let acc = 0;
+    series.forEach(([key, c, label], si) => {
+      const v = r[key]; if (v <= 0) return;
+      const x = sx(acc), w = Math.max(0, sx(acc + v) - x - (si < series.length - 1 ? 2 : 0));
+      const rect = h("rect", { x, y, width: w, height: rowH, fill: tok(c), rx: si === series.length - 1 || acc + v >= totalOf(r) ? 3 : 0 });
+      rect.addEventListener("mousemove", (e) => showTip(e, `${r.name} · ${label}<br>${fmtV(v)} (${fmt(100 * v / totalOf(r), 0)}%)`));
+      rect.addEventListener("mouseleave", hideTip);
+      svg.append(rect); acc += v;
+    });
+    svg.append(h("text", { x: sx(totalOf(r)) + 6, y: y + rowH / 2 + 4, "font-size": 11, fill: tok("--ink-2") }, fmtV(totalOf(r))));
+    svg.append(h("text", { x: W, y: y + rowH / 2 + 4, "font-size": 11.5, fill: tok("--ink"), "text-anchor": "end", "font-weight": 600 }, right(r)));
+  });
+}
+
+// ------------------------------------------------------------------ 5. speculative
+const SENT = "the paged KV cache stores keys and values for every past token so attention never recomputes them and memory grows one block at a time while the scheduler keeps every request moving".split(" ");
+const WRONG = ["a", "cache", "values", "also", "each", "tokens", "is", "then", "of", "fast", "it", "with", "more", "so"];
+const SP = { rng: mulberry32(11), pos: 0, rows: [], steps: 0, proposed: 0, accepted: 0, emitted: 0, timer: null };
+function spParams() { return { a: +$("#sp-a").value, k: +$("#sp-k").value, c: +$("#sp-c").value }; }
+function spReset() { SP.rng = mulberry32(11); SP.pos = 0; SP.rows = []; SP.steps = 0; SP.proposed = 0; SP.accepted = 0; SP.emitted = 0; spRender(); }
+function spStep() {
+  const { a, k } = spParams();
+  if (SP.pos >= SENT.length) { spPlay(false); return; }
+  const row = [];
+  let i = 0, rejected = false;
+  for (; i < k; i++) {
+    const truth = SENT[(SP.pos + i) % SENT.length];
+    if (SP.rng() < a) row.push({ t: truth, k: "ok" });
+    else { let w; do { w = WRONG[Math.floor(SP.rng() * WRONG.length)]; } while (w === truth); row.push({ t: w, k: "no" }); rejected = true; break; }
+  }
+  const accepted = row.filter(x => x.k === "ok").length;
+  row.push({ t: SENT[(SP.pos + accepted) % SENT.length], k: "tg", bonus: !rejected });
+  SP.pos += accepted + 1; SP.steps++; SP.proposed += k; SP.accepted += accepted; SP.emitted += accepted + 1;
+  SP.rows.push(row); if (SP.rows.length > 30) SP.rows.shift();
+  spRender();
+}
+function expectedTokens(a, k) { return a >= 1 ? k + 1 : (1 - a ** (k + 1)) / (1 - a); }
+function spRender() {
+  const { a, k, c } = spParams();
+  $("#sp-a-o").textContent = a.toFixed(2); $("#sp-k-o").textContent = k; $("#sp-c-o").textContent = c.toFixed(2);
+  const rows = $("#sp-rows");
+  rows.replaceChildren(...SP.rows.map((r, i) => h("div", { class: "spec-row" }, h("span", { class: "sn" }, "#" + (SP.steps - SP.rows.length + i + 1)),
+    ...r.map(x => h("span", { class: "tok " + x.k, title: x.k === "ok" ? "draft token accepted" : x.k === "no" ? "draft token rejected" : x.bonus ? "bonus token from the target" : "target's correction" }, x.k === "ok" ? "✓ " + x.t : x.k === "no" ? "✗ " + x.t : x.t)))));
+  rows.scrollTop = rows.scrollHeight;
+  $("#sp-text").replaceChildren(h("span", { class: "label" }, "Output so far "), SENT.slice(0, Math.min(SP.pos, SENT.length)).join(" ") + (SP.pos ? " …" : ""));
+  const emp = SP.proposed ? SP.accepted / SP.proposed : 0, tps = SP.steps ? SP.emitted / SP.steps : 0;
+  $("#sp-stats").replaceChildren(
+    stat(SP.steps ? fmt(100 * emp, 0) + "%" : "–", "acceptance rate (simulated)", true),
+    stat(SP.steps ? fmt(tps, 2) : "–", "tokens per target pass"),
+    stat(fmt(expectedTokens(a, k), 2), "expected tokens per pass"),
+    stat(fmt(expectedTokens(a, k) / (k * c + 1), 2) + "×", "expected speedup"));
+  // chart
+  const svg = $("#sp-svg"), W = svgSize(svg), H = 170, l = 40, r = 14, t = 12, b = 26;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.replaceChildren();
+  const pts = Array.from({ length: 8 }, (_, i) => ({ k: i + 1, s: expectedTokens(a, i + 1) / ((i + 1) * c + 1) }));
+  const ymax = Math.max(2, Math.ceil(Math.max(...pts.map(p => p.s)) + 0.25));
+  const sx = (kk) => l + (kk - 1) / 7 * (W - l - r), sy = (v) => H - b - (v / ymax) * (H - t - b);
+  for (let v = 0; v <= ymax; v += ymax > 4 ? 1 : 0.5) {
+    svg.append(h("line", { x1: l, x2: W - r, y1: sy(v), y2: sy(v), stroke: v === 1 ? tok("--muted") : tok("--grid"), "stroke-dasharray": v === 1 ? "4 3" : null }));
+    svg.append(h("text", { x: l - 6, y: sy(v) + 3, "font-size": 10, fill: tok("--muted"), "text-anchor": "end" }, v + "×"));
+  }
+  svg.append(h("text", { x: W - r, y: sy(1) - 4, "font-size": 10, fill: tok("--muted"), "text-anchor": "end" }, "no speedup"));
+  pts.forEach(p => svg.append(h("text", { x: sx(p.k), y: H - 8, "font-size": 10, fill: tok("--muted"), "text-anchor": "middle" }, "k=" + p.k)));
+  const area = `M${sx(1)},${sy(0)} ` + pts.map(p => `L${sx(p.k)},${sy(p.s)}`).join(" ") + ` L${sx(8)},${sy(0)} Z`;
+  svg.append(h("path", { d: area, fill: tok("--s7"), opacity: 0.1 }));
+  svg.append(h("polyline", { points: pts.map(p => `${sx(p.k)},${sy(p.s)}`).join(" "), fill: "none", stroke: tok("--s7"), "stroke-width": 2 }));
+  const best = pts.reduce((m, p) => p.s > m.s ? p : m, pts[0]);
+  pts.forEach(p => {
+    const cur = p.k === k;
+    const c1 = h("circle", { cx: sx(p.k), cy: sy(p.s), r: cur ? 6 : 4, fill: cur ? tok("--accent") : tok("--s7"), stroke: tok("--panel"), "stroke-width": 2 });
+    const hit = h("circle", { cx: sx(p.k), cy: sy(p.s), r: 14, fill: "transparent" });
+    hit.addEventListener("mousemove", (e) => showTip(e, `k = ${p.k}<br>${fmt(expectedTokens(a, p.k), 2)} tokens / pass<br>speedup ${fmt(p.s, 2)}×`));
+    hit.addEventListener("mouseleave", hideTip);
+    svg.append(c1, hit);
+  });
+  svg.append(h("text", { x: sx(best.k), y: sy(best.s) - 10, "font-size": 10.5, fill: tok("--ink"), "text-anchor": best.k > 6 ? "end" : "middle" }, `best k=${best.k}: ${fmt(best.s, 2)}×`));
+}
+function spPlay(on) {
+  if (on === undefined) on = !SP.timer;
+  clearInterval(SP.timer); SP.timer = null;
+  if (on) { if (SP.pos >= SENT.length) spReset(); SP.timer = setInterval(spStep, 650); }
+  $("#sp-play").textContent = SP.timer ? "Pause" : "Play";
+}
+$("#sp-play").addEventListener("click", () => spPlay());
+$("#sp-step").addEventListener("click", () => { spPlay(false); spStep(); });
+$("#sp-reset").addEventListener("click", () => { spPlay(false); spReset(); });
+["sp-a", "sp-k", "sp-c"].forEach(id => $("#" + id).addEventListener("input", spRender));
+
+// ------------------------------------------------------------------ 6. trace viewer
+function traceRows(t, key) { const f = t[key + "_fields"]; return t[key + "s"].map(r => Object.fromEntries(f.map((k, i) => [k, r[i]]))); }
+function renderTrace() {
+  const root = $("#trace-root");
+  const t = TRACE_STATE.trace;
+  const input = h("input", { type: "file", id: "trace-file", accept: ".json,application/json", onchange: (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try { const j = JSON.parse(rd.result); if (j.format !== "redline-trace-v1") throw new Error("missing format: redline-trace-v1");
+        TRACE_STATE.trace = j; TRACE_STATE.source = f.name; renderHeader(); renderTrace(); }
+      catch (err) { $("#trace-err").textContent = `Could not read ${f.name}: ${err.message}. Load the file written by redline_bench --trace-out.`; }
+    };
+    rd.readAsText(f);
+  } });
+  const loader = h("div", { class: "controls" }, h("label", { for: "trace-file", class: "btn" }, t ? "Load another trace" : "Load trace.json"), input,
+    h("span", { id: "trace-err", style: "color:var(--bad);font-size:13px" }));
+  input.style.cssText = "position:absolute;width:1px;height:1px;opacity:0";
+  if (!t) {
+    root.replaceChildren(h("div", { class: "empty" },
+      h("h3", {}, "No measured trace loaded yet"),
+      h("p", {}, "Record a run on the GPU, then load the file here (or bake it into the page so it opens with the data):"),
+      h("pre", {}, "build/redline_bench --model llama-int4.rlm --synthetic 32,512,256 \\\n    --max-seqs 8 --track-memory --trace-out trace.json\n\npython demo/build_demo.py --trace trace.json   # optional: embed it"),
+      h("p", {}, "The trace has every engine step (kind, CUDA-event GPU time, host overhead, batch size, KV blocks in use, queue length) and every request's arrival, first token and finish time."),
+      loader));
+    return;
+  }
+  const steps = traceRows(t, "step"), reqs = traceRows(t, "request");
+  const eng = (t.engine && t.engine.engine) || {};
+  const model = t.engine && t.engine.model;
+  const peak = t.memory && t.memory.peak_device_used_bytes;
+  const spec = t.speculative && t.speculative.enabled;
+  const graphFrac = steps.length ? steps.filter(s => s.cuda_graph).length / steps.length : 0;
+  root.replaceChildren(
+    h("div", { style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline" },
+      h("div", {}, h("h3", {}, `Workload ${t.workload}`),
+        h("div", { class: "sub", style: "font-size:12.5px;color:var(--muted)" },
+          [model ? `${model.num_layers}L · H ${model.hidden_size} · ${model.quant ? model.quant.weight_dtype : ""} weights` : null,
+           eng.kv_dtype ? `${eng.kv_dtype} KV` : null, eng.max_num_seqs ? `max ${eng.max_num_seqs} seqs` : null,
+           eng.cuda_graphs != null ? (eng.cuda_graphs ? "CUDA graphs on" : "CUDA graphs off") : null,
+           eng.async_scheduling != null ? (eng.async_scheduling ? "async" : "sync") : null,
+           TRACE_STATE.source === "embedded" ? "embedded at build time" : `loaded from ${TRACE_STATE.source}`].filter(Boolean).join(" · "))),
+      loader),
+    h("div", { class: "stats" },
+      stat(fmt(t.decode_throughput_tok_s || 0, 0), "decode tok/s", true),
+      stat(fmt(t.output_throughput_tok_s || 0, 0), "output tok/s"),
+      stat(t.ttft_ms ? fmt(t.ttft_ms.p50, 1) + " ms" : "–", "TTFT p50"),
+      stat(t.itl_ms ? `${fmt(t.itl_ms.p50, 2)} / ${fmt(t.itl_ms.p99, 2)}` : "–", "ITL p50 / p99 (ms)"),
+      stat(peak ? fmt(peak / 2 ** 30, 2) + " GiB" : "–", "peak device memory"),
+      stat(fmt(100 * graphFrac, 0) + "%", "steps replayed as graphs"),
+      spec ? stat(fmt(100 * t.speculative.acceptance_rate, 1) + "%", "draft acceptance") : null),
+    h("div", { class: "charts", style: "margin-top:16px" },
+      chartBox("GPU time per step", "CUDA-event time of each engine step, colored by step kind. Hover for details.", (svg) => drawStepBars(svg, steps)),
+      chartBox("Batch and queue", "Sequences running in each step and requests waiting for admission.", (svg) => drawLines(svg, steps, [["running", "--s1", "running"], ["waiting", "--s2", "waiting"]])),
+      chartBox("KV cache blocks in use", "Share of the paged KV pool allocated after scheduling each step.", (svg) => drawLines(svg, steps.map(s => ({ ...s, kvp: s.kv_total ? 100 * s.kv_used / s.kv_total : 0 })), [["kvp", "--s3", "% of pool"]], "%", 100)),
+      chartBox("Request timeline", "Each row is one request. Light: arrival until first token (queueing and prefill). Solid: decoding until finish.", (svg) => drawGantt(svg, reqs))));
+}
+function chartBox(title, sub, draw) {
+  const svg = h("svg", { width: "100%", height: 160, role: "img", "aria-label": title });
+  const box = h("div", { class: "chart" }, h("h3", {}, title), h("div", { class: "sub" }, sub), h("div", { class: "scroll-x" }, svg));
+  requestAnimationFrame(() => draw(svg));
+  return box;
+}
+const KIND_COLOR = { decode: "--s1", prefill: "--s2", mixed: "--s5", spec: "--s7" };
+function drawStepBars(svg, steps) {
+  const W = svgSize(svg), H = 170, l = 44, r = 8, t = 10, b = 40;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.replaceChildren();
+  const nb = Math.min(steps.length, Math.floor((W - l - r) / 3));
+  const per = Math.ceil(steps.length / nb), bins = [];
+  for (let i = 0; i < steps.length; i += per) {
+    const chunk = steps.slice(i, i + per);
+    const top = chunk.reduce((m, s) => s.gpu_ms > m.gpu_ms ? s : m, chunk[0]);
+    bins.push({ ...top, from: chunk[0].step, to: chunk[chunk.length - 1].step });
+  }
+  const ymax = Math.max(...bins.map(x => x.gpu_ms)) * 1.1 || 1;
+  const bw = (W - l - r) / bins.length;
+  const sy = (v) => H - b - v / ymax * (H - t - b);
+  axisY(svg, l, W - r, sy, ymax, " ms");
+  bins.forEach((s, i) => {
+    const x = l + i * bw, y = sy(s.gpu_ms);
+    const rect = h("rect", { x: x + 0.5, y, width: Math.max(1, bw - 1), height: H - b - y, fill: tok(KIND_COLOR[s.kind] || "--muted") });
+    rect.addEventListener("mousemove", (e) => showTip(e, `step ${s.from}${s.to !== s.from ? "–" + s.to + " (max shown)" : ""} · ${s.kind}${s.cuda_graph ? " · graph" : ""}<br>GPU ${fmt(s.gpu_ms, 2)} ms · host ${fmt(s.host_ms, 3)} ms<br>${s.seqs} seqs · ${s.tokens} tokens (${s.prefill_tokens} prefill)<br>KV ${s.kv_used}/${s.kv_total} blocks`));
+    rect.addEventListener("mouseleave", hideTip);
+    svg.append(rect);
+  });
+  axisX(svg, l, W - r, H - b, steps.length, "step");
+  const kinds = [...new Set(steps.map(s => s.kind))];
+  let lx = l;
+  kinds.forEach(k => { svg.append(h("rect", { x: lx, y: H - 12, width: 9, height: 9, rx: 2, fill: tok(KIND_COLOR[k] || "--muted") }));
+    svg.append(h("text", { x: lx + 13, y: H - 4, "font-size": 10.5, fill: tok("--ink-2") }, k)); lx += 18 + k.length * 7 + 14; });
+}
+function drawLines(svg, steps, series, unit = "", fixedMax) {
+  const W = svgSize(svg), H = 150, l = 44, r = 8, t = 10, b = series.length > 1 ? 40 : 26;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.replaceChildren();
+  const ymax = fixedMax || Math.max(1, ...steps.flatMap(s => series.map(([k]) => s[k]))) * 1.1;
+  const sx = (i) => l + (steps.length > 1 ? i / (steps.length - 1) : 0) * (W - l - r);
+  const sy = (v) => H - b - v / ymax * (H - t - b);
+  axisY(svg, l, W - r, sy, ymax, unit);
+  const stride = Math.max(1, Math.floor(steps.length / 800));
+  series.forEach(([k, c]) => {
+    const pts = [];
+    for (let i = 0; i < steps.length; i += stride) pts.push(`${sx(i).toFixed(1)},${sy(steps[i][k]).toFixed(1)}`);
+    if (series.length === 1) svg.append(h("path", { d: `M${sx(0)},${sy(0)} L` + pts.join(" L") + ` L${sx(steps.length - 1)},${sy(0)} Z`, fill: tok(c), opacity: 0.12 }));
+    svg.append(h("polyline", { points: pts.join(" "), fill: "none", stroke: tok(c), "stroke-width": 2, "stroke-linejoin": "round" }));
+  });
+  axisX(svg, l, W - r, H - b, steps.length, "step");
+  const hit = h("rect", { x: l, y: t, width: W - l - r, height: H - t - b, fill: "transparent" });
+  const cross = h("line", { y1: t, y2: H - b, stroke: tok("--muted"), "stroke-dasharray": "3 3", visibility: "hidden" });
+  hit.addEventListener("mousemove", (e) => {
+    const box = svg.getBoundingClientRect(), x = (e.clientX - box.left) * (W / box.width);
+    const i = clamp(Math.round((x - l) / (W - l - r) * (steps.length - 1)), 0, steps.length - 1);
+    cross.setAttribute("x1", sx(i)); cross.setAttribute("x2", sx(i)); cross.setAttribute("visibility", "visible");
+    showTip(e, `step ${steps[i].step}<br>` + series.map(([k, , lab]) => `${lab}: ${fmt(steps[i][k], unit === "%" ? 1 : 0)}${unit}`).join("<br>"));
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); cross.setAttribute("visibility", "hidden"); });
+  svg.append(cross, hit);
+  if (series.length > 1) { let lx = l; series.forEach(([, c, lab]) => {
+    svg.append(h("line", { x1: lx, x2: lx + 12, y1: H - 8, y2: H - 8, stroke: tok(c), "stroke-width": 2 }));
+    svg.append(h("text", { x: lx + 16, y: H - 4, "font-size": 10.5, fill: tok("--ink-2") }, lab)); lx += 30 + lab.length * 7; }); }
+}
+function drawGantt(svg, reqs) {
+  const rs = [...reqs].sort((a, b) => a.arrival_ms - b.arrival_ms || a.id - b.id);
+  const rowH = Math.max(2, Math.min(8, Math.floor(260 / Math.max(1, rs.length))));
+  const W = svgSize(svg), l = 44, r = 8, t = 6, b = 22, H = t + rs.length * rowH + b;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.replaceChildren();
+  const tmax = Math.max(...rs.map(x => x.finish_ms)) || 1;
+  const sx = (v) => l + v / tmax * (W - l - r);
+  for (let i = 0; i <= 4; i++) { const v = tmax * i / 4;
+    svg.append(h("line", { x1: sx(v), x2: sx(v), y1: t, y2: H - b, stroke: tok("--grid") }));
+    svg.append(h("text", { x: sx(v), y: H - 6, "font-size": 10, fill: tok("--muted"), "text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle" }, fmt(v / 1000, 2) + " s")); }
+  rs.forEach((q, i) => {
+    const y = t + i * rowH;
+    const a = h("rect", { x: sx(q.arrival_ms), y, width: Math.max(1, sx(q.first_token_ms) - sx(q.arrival_ms)), height: rowH - (rowH > 3 ? 1 : 0), fill: tok("--s2"), opacity: 0.45 });
+    const d = h("rect", { x: sx(q.first_token_ms), y, width: Math.max(1, sx(q.finish_ms) - sx(q.first_token_ms)), height: rowH - (rowH > 3 ? 1 : 0), fill: tok("--s1") });
+    const tipf = (e) => showTip(e, `request ${q.id}<br>prompt ${q.prompt_tokens} · output ${q.output_tokens}<br>TTFT ${fmt(q.first_token_ms - q.arrival_ms, 1)} ms · total ${fmt(q.finish_ms - q.arrival_ms, 0)} ms${q.preemptions ? "<br>preempted " + q.preemptions + "×" : ""}${q.draft_proposed ? `<br>acceptance ${fmt(100 * q.draft_accepted / q.draft_proposed, 0)}%` : ""}`);
+    [a, d].forEach(x => { x.addEventListener("mousemove", tipf); x.addEventListener("mouseleave", hideTip); });
+    svg.append(a, d);
+  });
+  svg.append(h("text", { x: 0, y: t + 10, "font-size": 10, fill: tok("--muted") }, "req"));
+}
+function axisY(svg, x0, x1, sy, ymax, unit) {
+  const step = niceStep(ymax / 4);
+  for (let v = 0; v <= ymax + 1e-9; v += step) {
+    svg.append(h("line", { x1: x0, x2: x1, y1: sy(v), y2: sy(v), stroke: v === 0 ? tok("--line") : tok("--grid") }));
+    svg.append(h("text", { x: x0 - 6, y: sy(v) + 3, "font-size": 10, fill: tok("--muted"), "text-anchor": "end" }, (step < 1 ? fmt(v, 1) : fmtInt(v)) + unit));
+  }
+}
+function axisX(svg, x0, x1, y, n, label) {
+  svg.append(h("text", { x: x0, y: y + 13, "font-size": 10, fill: tok("--muted") }, `${label} 0`));
+  svg.append(h("text", { x: x1, y: y + 13, "font-size": 10, fill: tok("--muted"), "text-anchor": "end" }, `${label} ${n - 1}`));
+}
+function niceStep(raw) { const p = 10 ** Math.floor(Math.log10(raw || 1)); const n = raw / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+
+// ------------------------------------------------------------------ 7. code map
+const MAP = [
+  ["Scheduler: continuous batching, preemption", "scheduler"],
+  ["KV block allocator", "block_alloc"],
+  ["Batch metadata: positions and KV slots", "batch_add"],
+  ["Async scheduling loop", "step_async"],
+  ["Pinned staging + single H2D copy", "upload"],
+  ["Step launch: graph replay, D2H ids", "launch"],
+  ["CUDA graph capture", "capture"],
+  ["Transformer layer (host orchestration)", "forward"],
+  ["RoPE fused with paged KV write", "rope_kv"],
+  ["Paged decode attention (GQA, split-K)", "attn_decode"],
+  ["W4A16 weight-only GEMV", "gemv_w4"],
+  ["GEMM dispatcher (cuBLASLt, CUTLASS, TRT-LLM)", "linear_dispatch"],
+  ["Top-k radix select", "sampling"],
+  ["Gumbel-max sampling with Philox", "gumbel"],
+  ["Speculative step (draft rounds)", "spec_step"],
+  ["Speculative verification kernel", "spec_verify"],
+  ["Benchmark metrics", "harness"],
+  ["INT4 quantization with clip search", "quant_int4"],
+  ["Pinned double-buffered weight upload", "pinned_upload"],
+];
+let mapCurrent = (store("redline-map") && MAP.some(m => m[1] === store("redline-map"))) ? store("redline-map") : "attn_decode";
+function renderMap() {
+  $("#map-list").replaceChildren(...MAP.map(([name, key]) => {
+    const e = EXCERPTS && EXCERPTS[key];
+    return h("button", { type: "button", class: "map-item", "aria-pressed": String(key === mapCurrent), onclick: () => { mapCurrent = key; store("redline-map", key); renderMap(); } },
+      h("b", {}, name), h("span", {}, e ? `${e.file}:${e.start}` : key));
+  }));
+  $("#map-code").replaceChildren(codeBlock(mapCurrent));
+}
+
+// ------------------------------------------------------------------ boot
+function renderAll() { renderHeader(); renderPipeline(); renderAsync(); kvRender(); renderBandwidth(); spRender(); renderTrace(); renderMap(); }
+kvReset();
+renderAll();
+let rT; window.addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => { renderAsync(); renderBandwidth(); spRender(); renderTrace(); }, 150); });
+const mq = window.matchMedia("(prefers-color-scheme: dark)");
+(mq.addEventListener ? mq.addEventListener("change", renderAll) : mq.addListener(renderAll));
+new MutationObserver(renderAll).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { /* auto-play stays off; Step buttons work */ }
+</script>
