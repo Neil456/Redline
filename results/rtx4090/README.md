@@ -42,12 +42,27 @@ scored with the same teacher-forced log-likelihoods (`redline.eval_quality`).
 
 | model | retention | WikiText ppl (HF 8.108) | HellaSwag acc_norm (HF 0.700) | ARC-E acc (HF 0.796) | ARC-C acc_norm (HF 0.528) |
 |---|---:|---:|---:|---:|---:|
-| `int8` | **99.6%** | 8.108 | 0.704 | 0.796 | 0.516 |
-| `int4` | 94.8% | 9.068 | 0.680 | 0.748 | 0.520 |
+| `int8` | **99.6%** | **8.108** | 0.704 | 0.796 | 0.516 |
+| `int4` (round-to-nearest) | 94.8% | 9.068 | 0.680 | 0.748 | 0.520 |
+| `int4` AWQ | 96.1% | 8.502 | 0.684 | 0.756 | 0.508 |
+| `int4` GPTQ | **97.1%** | 8.732 | 0.692 | 0.752 | 0.540 |
+| `int4` AWQ + GPTQ | 96.4% | **8.468** | 0.688 | 0.772 | 0.500 |
 
-INT4 round-to-nearest g128 costs about 12% WikiText perplexity on Llama 3 8B. That is in line with
-published RTN results for this model family, which is known to be quantization-sensitive. AWQ/GPTQ-style
-calibration would recover most of it.
+INT4 round-to-nearest g128 costs 11.8% WikiText perplexity on Llama 3 8B, in line with published RTN results
+for this quantization-sensitive model family. Calibration fixes most of that. The calibrated files
+come from `python -m redline.convert --method awq|gptq|awq_gptq`, which calibrates on 128 C4 samples of 512
+tokens, one layer at a time, in 1.5 (AWQ) to 6 (GPTQ) minutes on the 4090. They have the same format and size as
+the RTN file, so decode speed is unchanged.
+
+- **Perplexity** is the steadiest signal (256k tokens). AWQ + GPTQ brings the gap to FP16 down from +11.8%
+  to +4.4%, which recovers 62% of it. AWQ alone gets to +4.9%. GPTQ alone gets to +7.7%: it fixes rounding
+  error inside each layer but cannot move outlier channels, while AWQ's per-channel scales can.
+- **Mean retention** goes from 94.8% to 96.1–97.1%. The task scores use 250 examples each (standard error
+  about ±3 points), so the order of the calibrated methods within that range is noise. GPTQ's 97.1% is
+  helped by an ARC-Challenge score above FP16. AWQ + GPTQ, the best on perplexity and ARC-Easy, is the
+  recommended setting.
+- The AWQ checkpoint vLLM serves (`hugging-quants/...-AWQ-INT4`) was not run through this evaluation. Its
+  quality is not compared here.
 
 ## Decode throughput vs batch size (512 prompt / 256 output tokens)
 
