@@ -28,6 +28,7 @@ add_library(redline_core STATIC
   src/core/batch_builder.cpp
   src/core/block_allocator.cpp
   src/core/common.cpp
+  src/core/int4_layout.cpp
   src/core/json.cpp
   src/core/model_config.cpp
   src/core/safetensors.cpp
@@ -76,6 +77,7 @@ if(REDLINE_BUILD_CUDA)
     src/cuda/device_memory.cpp
     src/cuda/kernels/attention.cu
     src/cuda/kernels/elementwise.cu
+    src/cuda/kernels/gemm_w4a16_tc.cu
     src/cuda/kernels/gemv_weight_only.cu
     src/cuda/kernels/quant.cu
     src/cuda/kernels/rope_kv.cu

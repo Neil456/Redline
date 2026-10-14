@@ -112,6 +112,12 @@ class Engine {
   Json memory_report();
   Json describe() const;
 
+  // Per-op GPU time breakdown (eager steps, synchronized after each forward pass, so throughput
+  // measured while it is on is not representative).
+  void set_op_profiling(bool on);
+  Json op_profile() const { return op_profiler_.report(); }
+  void reset_op_profile() { op_profiler_.reset(); }
+
   void set_record_steps(bool on) { record_steps_ = on; }
   const std::vector<StepRecord>& step_records() const { return records_; }
   void clear_step_records() { records_.clear(); }
@@ -165,6 +171,8 @@ class Engine {
   void record_engine_state(StepRecord* r) const;
 
   EngineConfig cfg_;
+  OpProfiler op_profiler_;
+  bool op_profiling_ = false;
   int lookahead_ = 0;
   int max_blocks_per_seq_ = 0;
   int max_logit_rows_ = 0;

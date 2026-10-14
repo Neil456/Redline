@@ -48,6 +48,7 @@ Json EngineConfig::to_json() const {
   j.set("gemv_max_m", linear.gemv_max_m);
   j.set("int8_prefill", prefill_gemm_name(linear.int8_prefill));
   j.set("int4_prefill", prefill_gemm_name(linear.int4_prefill));
+  j.set("int4_kernel", linear.int4_tensor_cores ? "tc" : "gemv");
   return j;
 }
 
@@ -95,6 +96,15 @@ Engine::Engine(const EngineConfig& cfg) : cfg_(cfg) {
   };
   widest(mc, &lo.max_k, &lo.max_n);
   if (spec) widest(dc, &lo.max_k, &lo.max_n);
+  auto has_int4 = [](const ModelConfig& c) {
+    return c.weight_quant == QuantType::kINT4 || c.lm_head_quant == QuantType::kINT4;
+  };
+  const bool int4_trtllm = lo.int4_prefill == PrefillGemm::kTrtllm;
+  lo.int4_tensor_cores = lo.int4_tensor_cores && !int4_trtllm && (has_int4(mc) || (spec && has_int4(dc)));
+  if (lo.int4_tensor_cores) {  // an INT4 lm_head also runs on the tensor-core kernel
+    if (mc.lm_head_quant == QuantType::kINT4) lo.max_n = std::max(lo.max_n, mc.vocab_size);
+    if (spec && dc.lm_head_quant == QuantType::kINT4) lo.max_n = std::max(lo.max_n, dc.vocab_size);
+  }
   linear_ = std::make_unique<LinearExecutor>(lo, &ledger_);
 
   auto trtllm_for = [&](const ModelConfig& c) -> TrtllmWeightOnlyGemm* {
@@ -104,10 +114,11 @@ Engine::Engine(const EngineConfig& cfg) : cfg_(cfg) {
                       linear_->resolved_int8_prefill() == PrefillGemm::kTrtllm;
     return (int4 || int8) ? linear_->trtllm() : nullptr;
   };
-  weights_ = ModelWeights::load(cfg_.model_path, &ledger_, trtllm_for(mc));
+  const bool tc = linear_->options().int4_tensor_cores;
+  weights_ = ModelWeights::load(cfg_.model_path, &ledger_, trtllm_for(mc), tc);
   if (spec) {
     MemoryLedger draft_ledger;
-    draft_weights_ = ModelWeights::load(cfg_.draft_model_path, &draft_ledger, trtllm_for(dc));
+    draft_weights_ = ModelWeights::load(cfg_.draft_model_path, &draft_ledger, trtllm_for(dc), tc);
     ledger_.add("draft_weights", draft_ledger.total());
   }
 
@@ -263,13 +274,24 @@ DeviceBatch Engine::upload_batch(cudaStream_t s) {
 void Engine::forward_and_sample(LlamaModel& model, const DeviceBatch& b, const int32_t* token_src,
                                 bool static_partitions, const ForwardOutputs& out,
                                 cudaStream_t s) {
+  OpProfiler* prof = op_profiling_ ? &op_profiler_ : nullptr;
+  if (prof) prof->begin(&model == model_.get() ? "target" : "draft", s);
   kernels::resolve_input_ids(b.input_ids, b.input_src, token_src, b.shape.num_tokens, s);
+  if (prof) prof->mark("input_ids", s);
   model.forward(b, out.logits, static_partitions, s);
   if (out.tokens != nullptr && out.logits != nullptr && b.shape.num_logit_rows > 0) {
     RL_NVTX_RANGE("sample", kNvtxSample);
     kernels::sample_tokens(out.logits, b.shape.num_logit_rows, vocab_, b.sampling, out.rng_stream,
                            out.tokens, out.logprobs, out.stats, s);
+    if (prof) prof->mark("sampling", s);
   }
+  if (prof) prof->end();
+}
+
+void Engine::set_op_profiling(bool on) {
+  op_profiling_ = on;
+  model_->set_profiler(on ? &op_profiler_ : nullptr);
+  if (draft_model_) draft_model_->set_profiler(on ? &op_profiler_ : nullptr);
 }
 
 Engine::ForwardOutputs Engine::target_outputs() {
@@ -415,7 +437,7 @@ Engine::InFlight Engine::launch_step(StepPlan plan) {
     if (draft_model_) seq->draft_computed = e.start_pos + e.num_tokens;
   }
   const int real_seqs = builder_->num_seqs();
-  const int bucket = (!graphs_.empty() && p.pure_decode()) ? graph_bucket(real_seqs) : -1;
+  const int bucket = (!graphs_.empty() && !op_profiling_ && p.pure_decode()) ? graph_bucket(real_seqs) : -1;
   if (bucket > 0) builder_->pad_decode_to(bucket);
 
   RL_CUDA_CHECK(cudaEventRecord(ev_start_[f.slot], stream_));
@@ -533,7 +555,7 @@ void Engine::run_spec_step(StepPlan& plan, std::vector<RequestOutput>* outputs) 
   const int64_t step_id = next_step_++;
   std::vector<int> n_before(B);
   for (int i = 0; i < B; ++i) n_before[i] = plan.seqs[i].seq->total_len();
-  const int bucket = draft_graphs_.empty() ? -1 : graph_bucket(B);
+  const int bucket = (draft_graphs_.empty() || op_profiling_) ? -1 : graph_bucket(B);
 
   RL_CUDA_CHECK(cudaEventRecord(ev_start_[0], stream_));
   // Draft round 0 catches the draft KV cache up (1 or 2 tokens per sequence)

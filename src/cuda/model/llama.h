@@ -8,6 +8,7 @@
 #include "cuda/gemm/linear.h"
 #include "cuda/model/kv_cache.h"
 #include "cuda/model/weights.h"
+#include "cuda/op_profiler.h"
 
 namespace redline {
 
@@ -39,6 +40,8 @@ class LlamaModel {
   const ModelConfig& config() const { return weights_->config(); }
   const ModelWeights& weights() const { return *weights_; }
   const ModelRuntimeConfig& runtime() const { return rc_; }
+  // When set, forward() marks the end of every op (eager passes only).
+  void set_profiler(OpProfiler* p) { prof_ = p; }
   int max_partitions() const;
 
  private:
@@ -48,6 +51,7 @@ class LlamaModel {
   ModelRuntimeConfig rc_;
   const char* name_;
   float attn_scale_;
+  OpProfiler* prof_ = nullptr;
 
   DeviceBuffer rope_cos_, rope_sin_;
   DeviceBuffer residual_, normed_;

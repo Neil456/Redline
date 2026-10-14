@@ -3,6 +3,7 @@
 #include <cstring>
 #include <map>
 
+#include "core/int4_layout.h"
 #include "core/safetensors.h"
 #include "cpu/reference_model.h"
 #include "cuda/cuda_utils.h"
@@ -56,7 +57,8 @@ class PinnedUploader {
 }  // namespace
 
 std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, MemoryLedger* ledger,
-                                                 TrtllmWeightOnlyGemm* trtllm) {
+                                                 TrtllmWeightOnlyGemm* trtllm,
+                                                 bool int4_tensor_cores) {
   RL_NVTX_RANGE("load_weights", kNvtxHost);
   const double t0 = now_seconds();
   SafetensorsFile file(path);
@@ -77,6 +79,40 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
     return linear && name.find(".bias") == std::string::npos;
   };
 
+  // INT4 linears that get the tensor-core layout: prefix -> interleave (gate, up) columns.
+  struct TcLinear {
+    int n, k;
+    bool interleave;
+  };
+  std::map<std::string, TcLinear> tc;
+  if (int4_tensor_cores) {
+    auto consider = [&](const std::string& prefix, bool interleave) {
+      if (!file.has(prefix + ".weight") || converted_by_trtllm(prefix + ".weight")) return;
+      const TensorInfo& ti = file.info(prefix + ".weight");
+      if (ti.dtype != DType::kU8 || ti.shape.size() != 2) return;
+      const int n = static_cast<int>(ti.shape[0]), k = static_cast<int>(ti.shape[1] * 2);
+      if (!int4_tc_supported(n, k, cfg.group_size)) return;
+      // The interleaved layout permutes output columns, which a bias would have to follow.
+      if (interleave && file.has(prefix + ".bias")) interleave = false;
+      tc[prefix] = TcLinear{n, k, interleave};
+    };
+    for (int l = 0; l < cfg.num_layers; ++l) {
+      const std::string p = "layers." + std::to_string(l) + ".";
+      if (cfg.weight_quant == QuantType::kINT4) {
+        consider(p + "wqkv", false);
+        consider(p + "wo", false);
+        consider(p + "w_gate_up", true);
+        consider(p + "w_down", false);
+      }
+    }
+    if (cfg.lm_head_quant == QuantType::kINT4) consider("lm_head", false);
+  }
+  auto tc_prefix = [&](const std::string& name) -> const TcLinear* {
+    const size_t dot = name.rfind('.');
+    auto it = tc.find(name.substr(0, dot));
+    return it == tc.end() ? nullptr : &it->second;
+  };
+
   std::map<std::string, size_t> offsets;
   size_t total = 0;
   for (const auto& name : file.names()) {
@@ -88,9 +124,26 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
   auto* base = static_cast<uint8_t*>(w->storage_.get());
   {
     PinnedUploader up;
+    std::vector<uint8_t> tmp;
     for (const auto& kv : offsets) {
       const TensorInfo& ti = file.info(kv.first);
-      up.upload(base + kv.second, file.data(ti), ti.nbytes);
+      const TcLinear* t = tc_prefix(kv.first);
+      const std::string suffix = kv.first.substr(kv.first.rfind('.') + 1);
+      if (t != nullptr && suffix != "bias") {
+        tmp.resize(ti.nbytes);
+        if (suffix == "weight") {
+          relayout_int4_weight_tc(static_cast<const uint8_t*>(file.data(ti)), t->n, t->k,
+                                  t->interleave, tmp.data());
+        } else {  // scales / offsets
+          relayout_int4_params_tc(static_cast<const uint16_t*>(file.data(ti)), t->n, t->k,
+                                  cfg.group_size, t->interleave,
+                                  reinterpret_cast<uint16_t*>(tmp.data()));
+        }
+        up.upload(base + kv.second, tmp.data(), ti.nbytes);
+        up.finish();  // tmp is reused for the next tensor
+      } else {
+        up.upload(base + kv.second, file.data(ti), ti.nbytes);
+      }
     }
     up.finish();
   }
@@ -133,6 +186,10 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
     lw.weight = dev(prefix + ".weight");
     if (q != QuantType::kFP16) lw.scales = static_cast<const half*>(dev(prefix + ".scales"));
     if (q == QuantType::kINT4) lw.offsets = static_cast<const half*>(dev(prefix + ".offsets"));
+    if (auto it = tc.find(prefix); it != tc.end()) {
+      lw.int4_tc = true;
+      lw.interleaved = it->second.interleave;
+    }
     return lw;
   };
 
@@ -161,7 +218,8 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
     w->lm_head.weight = w->tok_embeddings;
   }
   RL_INFO("loaded ", path, " (", cfg.summary(), "): ", format_bytes(total), " in ",
-          static_cast<int>((now_seconds() - t0) * 1000), " ms");
+          static_cast<int>((now_seconds() - t0) * 1000), " ms",
+          tc.empty() ? "" : str_cat("; ", tc.size(), " INT4 linears in tensor-core layout"));
   return w;
 }
 

@@ -12,6 +12,7 @@
 #include "core/batch_builder.h"
 #include "core/block_allocator.h"
 #include "core/common.h"
+#include "core/int4_layout.h"
 #include "core/json.h"
 #include "core/model_config.h"
 #include "core/safetensors.h"
@@ -400,6 +401,35 @@ TEST(batch_builder_graph_padding_is_shape_stable) {
   EXPECT_EQ(MetaLayout::make(s, 4).total_words, MetaLayout::make(d, 4).total_words);
   const MetaLayout m = MetaLayout::make(s, 4);
   EXPECT_EQ(buf[m.slot_mapping + 3], 0);  // padding writes the scratch block
+}
+
+TEST(int4_tensor_core_layout_roundtrip) {
+  std::srand(7);
+  for (bool interleave : {false, true}) {
+    const int n = 128, k = 96, g = 32, groups = k / g;
+    std::vector<uint8_t> packed(static_cast<size_t>(n) * k / 2), tc(packed.size());
+    for (auto& b : packed) b = static_cast<uint8_t>(std::rand() & 0xFF);
+    std::vector<uint16_t> params(static_cast<size_t>(n) * groups), tcp(params.size());
+    for (size_t i = 0; i < params.size(); ++i) params[i] = static_cast<uint16_t>(i * 7 + 3);
+    redline::relayout_int4_weight_tc(packed.data(), n, k, interleave, tc.data());
+    redline::relayout_int4_params_tc(params.data(), n, k, g, interleave, tcp.data());
+    for (int col = 0; col < n; ++col) {
+      const int row = redline::int4_tc_source_row(col, n, interleave);
+      if (interleave) EXPECT_EQ(row, (col & 1) ? n / 2 + col / 2 : col / 2);
+      for (int kk = 0; kk < k; ++kk) {
+        const uint8_t b = packed[static_cast<size_t>(row) * (k / 2) + kk / 2];
+        const int want = (kk & 1) ? (b >> 4) : (b & 0xF);
+        EXPECT_EQ(redline::int4_tc_get(tc.data(), n, k, col, kk), want);
+      }
+      for (int gi = 0; gi < groups; ++gi) {
+        EXPECT_EQ(redline::int4_tc_param(tcp.data(), n, k, g, col, gi),
+                  params[static_cast<size_t>(row) * groups + gi]);
+      }
+    }
+  }
+  EXPECT_TRUE(redline::int4_tc_supported(4096, 14336, 128));
+  EXPECT_TRUE(!redline::int4_tc_supported(97, 512, 64));
+  EXPECT_TRUE(!redline::int4_tc_supported(128, 100, 64));
 }
 
 RL_TEST_MAIN()

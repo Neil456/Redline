@@ -120,6 +120,23 @@ void fused_add_rmsnorm(half* residual, const half* delta, const half* weight, in
   RL_CUDA_CHECK_LAUNCH();
 }
 
+__global__ void silu_and_mul_interleaved_kernel(const half* gate_up, int inter, half* out) {
+  const size_t row = blockIdx.x;
+  const half2* gu = reinterpret_cast<const half2*>(gate_up + row * 2 * inter);
+  for (int i = threadIdx.x; i < inter; i += blockDim.x) {
+    const float2 v = __half22float2(gu[i]);
+    const float s = __half2float(__float2half_rn(v.x / (1.f + __expf(-v.x))));
+    out[row * inter + i] = __float2half_rn(s * v.y);
+  }
+}
+
+void silu_and_mul_interleaved(const half* gate_up, int rows, int inter, half* out,
+                              cudaStream_t stream) {
+  if (rows <= 0) return;
+  silu_and_mul_interleaved_kernel<<<rows, std::min(row_threads(inter), 512), 0, stream>>>(gate_up, inter, out);
+  RL_CUDA_CHECK_LAUNCH();
+}
+
 void silu_and_mul(const half* gate_up, int rows, int inter, half* out, cudaStream_t stream) {
   if (rows <= 0) return;
   RL_CHECK(inter % 8 == 0, "intermediate size must be a multiple of 8");

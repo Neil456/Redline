@@ -39,6 +39,7 @@ EngineConfig config_from_dict(const py::dict& d) {
   if (!get("int4_gemm").is_none())
     c.linear.int4_prefill = prefill_gemm_from_name(get("int4_gemm").cast<std::string>());
   if (!get("gemv_max_m").is_none()) c.linear.gemv_max_m = get("gemv_max_m").cast<int>();
+  if (!get("int4_kernel").is_none()) c.linear.int4_tensor_cores = get("int4_kernel").cast<std::string>() == "tc";
   if (!get("track_memory").is_none()) c.track_memory = get("track_memory").cast<bool>();
   if (!get("device").is_none()) c.device = get("device").cast<int>();
   return c;

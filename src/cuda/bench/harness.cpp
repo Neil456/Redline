@@ -94,6 +94,10 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
   engine.clear_step_records();
   engine.set_record_steps(true);
   engine.reset_peak_memory();
+  if (opts.profile_ops) {
+    engine.reset_op_profile();
+    engine.set_op_profiling(true);
+  }
 
   std::vector<const Request*> order;
   for (const auto& r : workload.requests) order.push_back(&r);
@@ -140,6 +144,7 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
   }
   const double t_end = now_seconds();
   engine.set_record_steps(false);
+  if (opts.profile_ops) engine.set_op_profiling(false);
   const double duration = t_end - t0;
 
   // ---- per-request metrics ----
@@ -233,8 +238,23 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
   report.set("speculative", spec);
   report.set("memory", engine.memory_report());
   if (opts.keep_per_request) report.set("requests", per_request);
+  if (opts.profile_ops) report.set("op_profile", engine.op_profile());
   if (!opts.trace_path.empty()) write_trace(opts.trace_path, report, steps, outputs, t0);
   return report;
+}
+
+std::string format_op_profile(const Json& r) {
+  const Json* ops = r.find("op_profile");
+  if (ops == nullptr || !ops->is_array()) return "";
+  std::string out = "  op                               ms/pass  calls/pass      %\n";
+  char line[160];
+  for (size_t i = 0; i < ops->size(); ++i) {
+    const Json& o = (*ops)[i];
+    std::snprintf(line, sizeof(line), "  %-30s %9.3f %11.1f %6.1f\n", o["op"].as_string().c_str(),
+                  o["ms_per_pass"].as_double(), o["calls_per_pass"].as_double(), o["pct"].as_double());
+    out += line;
+  }
+  return out;
 }
 
 std::string format_report_summary(const Json& r) {

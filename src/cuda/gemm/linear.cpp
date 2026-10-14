@@ -1,6 +1,7 @@
 #include "cuda/gemm/linear.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "cuda/cuda_utils.h"
 #include "cuda/kernels/kernels.h"
@@ -64,6 +65,21 @@ LinearExecutor::LinearExecutor(const LinearOptions& opts, MemoryLedger* ledger)
            "INT4 prefill supports the dequant and trtllm backends");
 
   dequant_scratch_ = ledger->alloc("workspace", opts_.dequant_scratch);
+  if (opts_.int4_tensor_cores) {
+    // Split-K partials: splits * n <= target CTAs * 256 + n for every layer (see
+    // kernels::w4a16_tc_splits), so this bounds every INT4 GEMM up to max_n columns.
+    int sms = 0, dev = 0;
+    RL_CUDA_CHECK(cudaGetDevice(&dev));
+    RL_CUDA_CHECK(cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev));
+    const size_t max_n = static_cast<size_t>(std::max(opts_.max_n, 256));
+    const char* e = std::getenv("REDLINE_W4TC_CTAS_PER_SM");
+    const size_t per_sm = static_cast<size_t>(std::max(2, e != nullptr ? std::atoi(e) : 2));
+    const size_t floats = static_cast<size_t>(kernels::kW4TcMaxM) * (per_sm * sms * 256u + max_n);
+    tc_partials_ = ledger->alloc("workspace", floats * sizeof(float));
+    const size_t tickets = max_n / 256 + 64;
+    tc_tickets_ = ledger->alloc("workspace", tickets * sizeof(int));
+    RL_CUDA_CHECK(cudaMemset(tc_tickets_.get(), 0, tc_tickets_.bytes()));
+  }
   if (int8_backend_ == PrefillGemm::kW8A8) {
     RL_CHECK(opts_.max_k > 0 && opts_.max_n > 0, "W8A8 needs max_k / max_n");
     act_q_ = ledger->alloc("workspace", static_cast<size_t>(opts_.max_m) * opts_.max_k);
@@ -85,7 +101,8 @@ LinearExecutor::~LinearExecutor() = default;
 
 std::string LinearExecutor::describe() const {
   return str_cat("gemv_max_m=", opts_.gemv_max_m, " int8_prefill=", prefill_gemm_name(int8_backend_),
-                 " int4_prefill=", prefill_gemm_name(int4_backend_));
+                 " int4_prefill=", prefill_gemm_name(int4_backend_),
+                 " int4_kernel=", opts_.int4_tensor_cores ? "tensor-core" : "gemv");
 }
 
 void LinearExecutor::forward(const LinearWeight& w, const half* x, int m, void* y, bool y_fp32,
@@ -101,6 +118,14 @@ void LinearExecutor::forward(const LinearWeight& w, const half* x, int m, void* 
   if (w.trtllm_layout) {
     RL_CHECK(trtllm_ && !y_fp32, "linear ", w.name, " needs the TensorRT-LLM backend (fp16 out)");
     trtllm_->run(w, x, m, static_cast<half*>(y), stream);
+    return;
+  }
+  if (w.int4_tc) {
+    if (m <= kernels::kW4TcMaxM) {
+      tc_gemm(w, x, m, y, y_fp32, false, stream);
+    } else {
+      dequant_gemm(w, x, m, y, y_fp32, stream);
+    }
     return;
   }
   if (m <= opts_.gemv_max_m) {
@@ -135,6 +160,36 @@ void LinearExecutor::forward(const LinearWeight& w, const half* x, int m, void* 
   dequant_gemm(w, x, m, y, y_fp32, stream);
 }
 
+void LinearExecutor::forward_gated(const LinearWeight& w, const half* x, int m, half* out,
+                                   half* scratch, cudaStream_t stream) {
+  if (m <= 0) return;
+  const int inter = w.n / 2;
+  if (w.int4_tc && w.interleaved && m <= kernels::kW4TcMaxM && w.bias == nullptr) {
+    tc_gemm(w, x, m, out, false, /*silu_mul=*/true, stream);
+    return;
+  }
+  forward(w, x, m, scratch, false, stream);
+  if (w.interleaved) {
+    kernels::silu_and_mul_interleaved(scratch, m, inter, out, stream);
+  } else {
+    kernels::silu_and_mul(scratch, m, inter, out, stream);
+  }
+}
+
+void LinearExecutor::tc_gemm(const LinearWeight& w, const half* x, int m, void* y, bool y_fp32,
+                             bool silu_mul, cudaStream_t stream) {
+  RL_CHECK(tc_partials_.get() != nullptr, "linear ", w.name,
+           " is in the tensor-core INT4 layout but the executor has no workspace");
+  kernels::W4TcWorkspace ws;
+  ws.partials = tc_partials_.as<float>();
+  ws.partial_floats = tc_partials_.bytes() / sizeof(float);
+  ws.tickets = tc_tickets_.as<int>();
+  ws.num_tickets = static_cast<int>(tc_tickets_.bytes() / sizeof(int));
+  kernels::gemm_w4a16_tc(x, m, static_cast<const uint8_t*>(w.weight), w.scales, w.offsets,
+                         w.group_size, silu_mul ? nullptr : w.bias, w.n, w.k, y, y_fp32, silu_mul,
+                         ws, stream);
+}
+
 void LinearExecutor::gemv(const LinearWeight& w, const half* x, int m, void* y, bool y_fp32,
                           cudaStream_t stream) {
   if (w.qtype == QuantType::kINT8) {
@@ -162,6 +217,9 @@ void LinearExecutor::dequant_gemm(const LinearWeight& w, const half* x, int m, v
     if (w.qtype == QuantType::kINT8) {
       kernels::dequantize_weight_int8(static_cast<const int8_t*>(w.weight), w.scales, w.k, n0, n1,
                                       scratch, stream);
+    } else if (w.int4_tc) {
+      kernels::dequantize_weight_int4_tc(static_cast<const uint8_t*>(w.weight), w.scales, w.offsets,
+                                         w.k, w.group_size, n0, n1, scratch, stream);
     } else {
       kernels::dequantize_weight_int4(static_cast<const uint8_t*>(w.weight), w.scales, w.offsets,
                                       w.k, w.group_size, n0, n1, scratch, stream);

@@ -27,8 +27,11 @@ class ModelWeights {
   // Uploads all tensors into one device allocation through a pair of pinned
   // staging buffers (double-buffered async copies). When `trtllm` is given,
   // quantized linears are converted to TensorRT-LLM's layout instead.
+  // With `int4_tensor_cores`, INT4 linears whose shapes allow it are re-laid out for the
+  // tensor-core GEMM on the way to the device (core/int4_layout.h).
   static std::unique_ptr<ModelWeights> load(const std::string& path, MemoryLedger* ledger,
-                                            TrtllmWeightOnlyGemm* trtllm = nullptr);
+                                            TrtllmWeightOnlyGemm* trtllm = nullptr,
+                                            bool int4_tensor_cores = false);
 
   const ModelConfig& config() const { return config_; }
   size_t bytes() const { return storage_.bytes(); }

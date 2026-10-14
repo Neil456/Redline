@@ -24,11 +24,16 @@ struct BenchOptions {
   // When set, writes a step-by-step trace (scheduler state, CUDA-event step
   // times, request lifetimes) for the demo's trace viewer (demo/index.html).
   std::string trace_path;
+  // Per-op GPU time breakdown ("op_profile" in the report). Runs the workload eagerly with a
+  // sync after every forward pass, so the throughput numbers of that report are not comparable.
+  bool profile_ops = false;
 };
 
 Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions& opts);
 
 // One-line human-readable summary of a report.
 std::string format_report_summary(const Json& report);
+// Table of the per-op profile (empty when the report has none).
+std::string format_op_profile(const Json& report);
 
 }  // namespace redline

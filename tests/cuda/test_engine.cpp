@@ -247,6 +247,35 @@ TEST(engine_benchmark_harness_report) {
   std::printf("    %s\n", format_report_summary(r).c_str());
 }
 
+TEST(engine_op_profile_and_int4_kernels_agree) {
+  const std::string& path = model_path(QuantType::kINT4);
+  // Tensor-core INT4 (default) and the GEMV layout produce the same greedy tokens (within the
+  // reference margin), and the op profiler attributes every op once per layer.
+  for (bool tc : {true, false}) {
+    EngineConfig cfg = small_config(path);
+    cfg.linear.int4_tensor_cores = tc;
+    Engine engine(cfg);
+    check_greedy(path, engine.generate(make_requests(4, 40, 12, 21)), 0.05f);
+  }
+  EngineConfig cfg = small_config(path);
+  Engine engine(cfg);
+  Workload w = synthetic_workload(4, 40, 16, engine.model_config().vocab_size, 5);
+  BenchOptions opts;
+  opts.profile_ops = true;
+  const Json r = run_benchmark(engine, w, opts);
+  const Json& ops = r["op_profile"];
+  bool saw_qkv = false;
+  for (size_t i = 0; i < ops.size(); ++i) {
+    if (ops[i]["op"].as_string() == "target/qkv_proj") {
+      saw_qkv = true;
+      EXPECT_NEAR(ops[i]["calls_per_pass"].as_double(), engine.model_config().num_layers, 1e-9);
+      EXPECT_TRUE(ops[i]["ms_per_pass"].as_double() > 0);
+    }
+  }
+  EXPECT_TRUE(saw_qkv);
+  std::printf("%s", format_op_profile(r).c_str());
+}
+
 int main(int argc, char** argv) {
   int n = 0;
   if (cudaGetDeviceCount(&n) != cudaSuccess || n == 0) {

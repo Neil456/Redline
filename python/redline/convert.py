@@ -6,6 +6,9 @@ as a stream, so peak host memory stays around one layer.
 
     python -m redline.convert --model meta-llama/Llama-3.1-8B-Instruct \\
         --out llama31-8b-int4.rlm --weights int4 --group-size 128 --lm-head int8
+
+INT4 can be calibrated with --method awq | gptq | awq_gptq (see redline.calibrate); the
+default (rtn) is round-to-nearest with a per-group clipping search.
 """
 
 from __future__ import annotations
@@ -174,6 +177,10 @@ def convert(
     clip_search: bool = True,
     device: str = "cpu",
     verbose: bool = True,
+    method: str = "rtn",
+    calib_samples: int = 128,
+    calib_seqlen: int = 512,
+    calib_dataset: str = "c4",
 ) -> ModelSpec:
     model_dir = resolve_model_dir(model)
     spec = build_spec(model_dir, weight_dtype, lm_head_dtype, group_size, source=model)
@@ -193,6 +200,17 @@ def convert(
         "w_down": has_bias(["mlp.down_proj"]),
     }
     spec.attention_bias = bias["wqkv"]
+
+    calib = None
+    if method != "rtn":
+        if weight_dtype != "int4":
+            raise ValueError("--method awq/gptq applies to --weights int4")
+        if bias["w_gate_up"] or bias["wo"]:
+            raise NotImplementedError("calibrated INT4 does not support MLP / o_proj biases")
+        from .calibrate import calibrate
+
+        calib = calibrate(model_dir, method, group_size, n_samples=calib_samples, seqlen=calib_seqlen,
+                          dataset=calib_dataset, device=device, verbose=verbose)
 
     tied = spec.tie_word_embeddings or not reader.has("lm_head.weight")
     spec.tie_word_embeddings = tied
@@ -214,7 +232,19 @@ def convert(
         plan += linear_plan("lm_head", spec.vocab_size, H, lm_head_dtype, group_size, False)
 
     def f16(name: str) -> torch.Tensor:
+        if calib is not None and name in calib["norms"]:  # AWQ folds 1/s into RMSNorm weights
+            return calib["norms"][name]
         return reader.get(name).to(torch.float16)
+
+    def layer_linear(i: int, kind: str, names: list[str]):
+        if calib is not None:
+            out = list(calib["linears"][(i, kind)])
+            _, b = _fused(reader, names) if kind == "wqkv" else (None, None)
+            if b is not None:
+                out.append(b.to(torch.float16))
+            return out
+        w, b = _fused(reader, names)
+        return linear(w, b, q)
 
     def linear(w: torch.Tensor, b: torch.Tensor | None, qtype: str):
         tensors = quantize_linear(w.to(device), qtype, group_size, clip_search)
@@ -229,15 +259,11 @@ def convert(
             t0 = time.time()
             hp = f"model.layers.{i}."
             yield f16(hp + "input_layernorm.weight")
-            w, b = _fused(reader, [hp + n for n in qkv_names])
-            yield from linear(w, b, q)
-            w, b = _fused(reader, [hp + "self_attn.o_proj"])
-            yield from linear(w, b, q)
+            yield from layer_linear(i, "wqkv", [hp + n for n in qkv_names])
+            yield from layer_linear(i, "wo", [hp + "self_attn.o_proj"])
             yield f16(hp + "post_attention_layernorm.weight")
-            w, b = _fused(reader, [hp + n for n in gu_names])
-            yield from linear(w, b, q)
-            w, b = _fused(reader, [hp + "mlp.down_proj"])
-            yield from linear(w, b, q)
+            yield from layer_linear(i, "w_gate_up", [hp + n for n in gu_names])
+            yield from layer_linear(i, "w_down", [hp + "mlp.down_proj"])
             if verbose:
                 print(f"  layer {i + 1}/{spec.num_layers} ({time.time() - t0:.1f}s)", file=sys.stderr)
         yield f16("model.norm.weight")
@@ -245,9 +271,10 @@ def convert(
             src = "model.embed_tokens.weight" if tied else "lm_head.weight"
             yield from linear(reader.get(src).to(torch.float32), None, lm_head_dtype)
 
-    metadata = {"format": "redline", "redline_config": json.dumps(spec.to_json())}
+    metadata = {"format": "redline", "redline_config": json.dumps(spec.to_json()), "quant_method": method}
     if verbose:
-        print(f"converting {model} -> {out} (weights={q}, lm_head={lm_head_dtype})", file=sys.stderr)
+        print(f"converting {model} -> {out} (weights={q}, method={method}, lm_head={lm_head_dtype})",
+              file=sys.stderr)
     write_streaming(out, plan, metadata, produce())
     if verbose:
         total = sum(t.nbytes for t in plan)
@@ -263,6 +290,11 @@ def main(argv=None) -> None:
     ap.add_argument("--lm-head", default="fp16", choices=["fp16", "int8", "int4"])
     ap.add_argument("--group-size", type=int, default=128)
     ap.add_argument("--no-clip-search", action="store_true", help="plain round-to-nearest")
+    ap.add_argument("--method", default="rtn", choices=["rtn", "awq", "gptq", "awq_gptq"],
+                    help="INT4 quantization: round-to-nearest, or calibrated AWQ / GPTQ / both")
+    ap.add_argument("--calib-dataset", default="c4", choices=["c4", "wikitext", "random"])
+    ap.add_argument("--calib-samples", type=int, default=128)
+    ap.add_argument("--calib-seqlen", type=int, default=512)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu",
                     help="device used for quantization math")
     args = ap.parse_args(argv)
@@ -274,6 +306,10 @@ def main(argv=None) -> None:
         group_size=args.group_size,
         clip_search=not args.no_clip_search,
         device=args.device,
+        method=args.method,
+        calib_samples=args.calib_samples,
+        calib_seqlen=args.calib_seqlen,
+        calib_dataset=args.calib_dataset,
     )
 
 

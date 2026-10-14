@@ -64,7 +64,7 @@ void LlamaModel::forward(const DeviceBatch& b, float* logits, bool static_partit
   RL_CHECK(shape.num_logit_rows <= rc_.max_logit_rows, "forward: too many logits rows");
   RL_CHECK(shape.num_decode_items <= rc_.max_decode_items, "forward: too many decode items");
   RL_CHECK(shape.max_context <= rc_.max_seq_len, "forward: context exceeds max_seq_len");
-  const int H = c.hidden_size, I = c.intermediate_size;
+  const int H = c.hidden_size;
   const float eps = static_cast<float>(c.rms_norm_eps);
 
   half* residual = residual_.as<half>();
@@ -73,8 +73,12 @@ void LlamaModel::forward(const DeviceBatch& b, float* logits, bool static_partit
   half* bb = buf_b_.as<half>();
   half* cc = buf_c_.as<half>();
 
+  auto mark = [&](const char* op) {
+    if (prof_ != nullptr) prof_->mark(op, s);
+  };
   kernels::embedding_lookup(b.input_ids, weights_->tok_embeddings, T, H, residual, s);
   kernels::fused_add_rmsnorm(residual, nullptr, weights_->layers[0].attn_norm, T, H, eps, x, s);
+  mark("embed+norm");
 
   kernels::AttentionParams ap;
   ap.q = a;
@@ -113,19 +117,27 @@ void LlamaModel::forward(const DeviceBatch& b, float* logits, bool static_partit
     const LayerWeights& lw = weights_->layers[l];
 
     linear_->forward(lw.wqkv, x, T, a, false, s);
+    mark("qkv_proj");
     ap.kv = kv_->layer(l);
     kernels::rope_and_write_kv(a, b.positions, b.slot_mapping, T, c.num_heads,
                                rope_cos_.as<float>(), rope_sin_.as<float>(), ap.kv, s);
+    mark("rope+kv_write");
     kernels::paged_attention_decode(ap, dw, s);
+    mark("attention_decode");
     kernels::paged_attention_prefill(ap, pw, s);
+    mark("attention_prefill");
     linear_->forward(lw.wo, bb, T, cc, false, s);
+    mark("o_proj");
     kernels::fused_add_rmsnorm(residual, cc, lw.ffn_norm, T, H, eps, x, s);
+    mark("add+rmsnorm");
 
-    linear_->forward(lw.w_gate_up, x, T, a, false, s);
-    kernels::silu_and_mul(a, T, I, bb, s);
+    linear_->forward_gated(lw.w_gate_up, x, T, bb, a, s);  // bb = silu(gate) * up
+    mark("gate_up+swiglu");
     linear_->forward(lw.w_down, bb, T, cc, false, s);
+    mark("down_proj");
     const half* next_norm = l + 1 < c.num_layers ? weights_->layers[l + 1].attn_norm : weights_->norm;
     kernels::fused_add_rmsnorm(residual, cc, next_norm, T, H, eps, x, s);
+    mark("add+rmsnorm");
   }
 
   const int R = shape.num_logit_rows;
@@ -134,6 +146,7 @@ void LlamaModel::forward(const DeviceBatch& b, float* logits, bool static_partit
     half* hrows = logit_hidden_.as<half>();
     kernels::gather_rows(x, b.logit_token, R, H, hrows, s);
     linear_->forward(weights_->lm_head, hrows, R, logits, true, s);
+    mark("lm_head");
   }
 }
 

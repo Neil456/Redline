@@ -1,5 +1,6 @@
 // GEMM tests: weight-only GEMV kernels, cuBLASLt FP16/INT8 wrappers and every
 // LinearExecutor path (GEMV, chunked GEMV, dequantize+cuBLASLt, W8A8, CUTLASS).
+#include "core/int4_layout.h"
 #include "cpu/random_model.h"
 #include "cuda/gemm/cublaslt_gemm.h"
 #include "cuda/gemm/linear.h"
@@ -79,6 +80,54 @@ std::vector<float> cpu_linear(const std::vector<float>& x, int m, const std::vec
   return y;
 }
 
+// Copies an INT4 QuantLinear into the tensor-core layout (L.deq stays the logical reference).
+struct TcCopy {
+  DeviceVec<uint8_t> w;
+  DeviceVec<half> s, o;
+  LinearWeight lw;
+};
+
+TcCopy to_tc(const QuantLinear& L, bool interleave) {
+  const auto bytes = L.w.download();
+  auto bits = [](const std::vector<half>& h) {
+    std::vector<uint16_t> v(h.size());
+    std::memcpy(v.data(), h.data(), h.size() * 2);
+    return v;
+  };
+  const auto s16 = bits(L.scales.download()), o16 = bits(L.offsets.download());
+  std::vector<uint8_t> wt(bytes.size());
+  std::vector<uint16_t> st(s16.size()), ot(o16.size());
+  relayout_int4_weight_tc(bytes.data(), L.n, L.k, interleave, wt.data());
+  relayout_int4_params_tc(s16.data(), L.n, L.k, L.g, interleave, st.data());
+  relayout_int4_params_tc(o16.data(), L.n, L.k, L.g, interleave, ot.data());
+  auto as_half = [](const std::vector<uint16_t>& v) {
+    std::vector<half> h(v.size());
+    std::memcpy(h.data(), v.data(), v.size() * 2);
+    return h;
+  };
+  TcCopy t{DeviceVec<uint8_t>(wt), DeviceVec<half>(as_half(st)), DeviceVec<half>(as_half(ot)), L.lw};
+  t.lw.weight = t.w.get();
+  t.lw.scales = t.s.get();
+  t.lw.offsets = t.o.get();
+  t.lw.int4_tc = true;
+  t.lw.interleaved = interleave;
+  if (interleave) t.lw.bias = nullptr;
+  return t;
+}
+
+// silu(gate_i) * up_i with the fp16 rounding points of the GPU paths.
+std::vector<float> cpu_swiglu(const std::vector<float>& gu, int m, int inter) {
+  auto r = [](float v) { return __half2float(__float2half_rn(v)); };
+  std::vector<float> out(static_cast<size_t>(m) * inter);
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < inter; ++j) {
+      const float g = r(gu[static_cast<size_t>(i) * 2 * inter + j]);
+      const float u = r(gu[static_cast<size_t>(i) * 2 * inter + inter + j]);
+      out[static_cast<size_t>(i) * inter + j] = r(g / (1.f + std::exp(-g))) * u;
+    }
+  return out;
+}
+
 }  // namespace
 
 TEST(gemv_weight_only_matches_cpu) {
@@ -110,6 +159,97 @@ TEST(gemv_weight_only_matches_cpu) {
         }
       }
     }
+  }
+}
+
+TEST(w4a16_tensor_core_gemm_matches_cpu) {
+  struct Shape {
+    int n, k, g;
+  };
+  // splits > 1 (deterministic last-CTA reduction) and a single-split shape.
+  for (const Shape sh : {Shape{384, 512, 64}, Shape{256, 1024, 128}, Shape{256, 64, 64}}) {
+    QuantLinear L = make_linear(sh.n, sh.k, QuantType::kINT4, sh.g, /*bias=*/true, 500 + sh.k);
+    TcCopy T = to_tc(L, false);
+    DeviceVec<float> partials(std::max<size_t>(1, kernels::w4a16_tc_workspace_floats(64, sh.n, sh.k, sh.g)));
+    DeviceVec<int> tickets(64);
+    RL_CUDA_CHECK(cudaMemset(tickets.get(), 0, 64 * sizeof(int)));
+    kernels::W4TcWorkspace ws;
+    ws.partials = partials.get();
+    ws.partial_floats = partials.size();
+    ws.tickets = tickets.get();
+    ws.num_tickets = 64;
+    for (int m : {1, 7, 16, 17, 40, 64}) {
+      auto x = round_half(randn(static_cast<size_t>(m) * sh.k, 1.f, 600 + m));
+      DeviceVec<half> dx(to_half(x));
+      const auto ref = cpu_linear(x, m, L.deq, sh.n, sh.k, L.bias);
+      DeviceVec<half> y16(static_cast<size_t>(m) * sh.n);
+      kernels::gemm_w4a16_tc(dx.get(), m, T.w.get(), T.s.get(), T.o.get(), sh.g, L.d_bias.get(), sh.n, sh.k,
+                             y16.get(), false, false, ws, 0);
+      EXPECT_CLOSE_VEC(to_float(y16.download()), ref, 4e-3);
+      DeviceVec<float> y32(static_cast<size_t>(m) * sh.n);
+      kernels::gemm_w4a16_tc(dx.get(), m, T.w.get(), T.s.get(), T.o.get(), sh.g, L.d_bias.get(), sh.n, sh.k,
+                             y32.get(), true, false, ws, 0);
+      const auto got = y32.download();
+      EXPECT_CLOSE_VEC(got, ref, 2e-3);
+      // Same inputs again: the split-K reduction is deterministic and the tickets were reset.
+      kernels::gemm_w4a16_tc(dx.get(), m, T.w.get(), T.s.get(), T.o.get(), sh.g, L.d_bias.get(), sh.n, sh.k,
+                             y32.get(), true, false, ws, 0);
+      const auto again = y32.download();
+      for (size_t i = 0; i < got.size(); ++i) EXPECT_EQ(got[i], again[i]);
+    }
+    EXPECT_TRUE(tickets.download() == std::vector<int>(64, 0));
+  }
+}
+
+TEST(w4a16_tensor_core_fused_swiglu_and_dequant) {
+  const int inter = 256, n = 2 * inter, k = 256, g = 64;
+  QuantLinear L = make_linear(n, k, QuantType::kINT4, g, /*bias=*/false, 700);
+  TcCopy T = to_tc(L, /*interleave=*/true);
+  DeviceVec<float> partials(std::max<size_t>(1, kernels::w4a16_tc_workspace_floats(64, n, k, g)));
+  DeviceVec<int> tickets(64);
+  RL_CUDA_CHECK(cudaMemset(tickets.get(), 0, 64 * sizeof(int)));
+  kernels::W4TcWorkspace ws{partials.get(), partials.size(), tickets.get(), 64};
+  for (int m : {1, 9, 33}) {
+    auto x = round_half(randn(static_cast<size_t>(m) * k, 1.f, 800 + m));
+    DeviceVec<half> dx(to_half(x)), out(static_cast<size_t>(m) * inter);
+    kernels::gemm_w4a16_tc(dx.get(), m, T.w.get(), T.s.get(), T.o.get(), g, nullptr, n, k, out.get(), false,
+                           /*silu_mul=*/true, ws, 0);
+    const auto ref = cpu_swiglu(cpu_linear(x, m, L.deq, n, k, {}), m, inter);
+    EXPECT_CLOSE_VEC(to_float(out.download()), ref, 6e-3);
+  }
+  // Prefill path: the tc-layout dequantizer reproduces the (interleaved) weight rows exactly.
+  DeviceVec<half> rows(static_cast<size_t>(128) * k);
+  kernels::dequantize_weight_int4_tc(T.w.get(), T.s.get(), T.o.get(), k, g, 64, 192, rows.get(), 0);
+  const auto got = to_float(rows.download());
+  for (int r = 0; r < 128; ++r) {
+    const int src = int4_tc_source_row(64 + r, n, true);
+    for (int c = 0; c < k; ++c) {
+      EXPECT_EQ(got[static_cast<size_t>(r) * k + c],
+                __half2float(__float2half_rn(L.deq[static_cast<size_t>(src) * k + c])));
+    }
+  }
+}
+
+TEST(linear_executor_int4_tensor_core_paths) {
+  const int inter = 192, k = 256, g = 64;
+  LinearOptions lo;
+  lo.int4_tensor_cores = true;
+  lo.max_m = 256;
+  lo.max_k = 2 * inter;
+  lo.max_n = 2 * inter;
+  lo.dequant_scratch = 64 * k * 2;  // several dequant tiles
+  MemoryLedger ledger;
+  LinearExecutor exec(lo, &ledger);
+  QuantLinear L = make_linear(2 * inter, k, QuantType::kINT4, g, /*bias=*/true, 900);
+  TcCopy plain = to_tc(L, false), gated = to_tc(L, true);
+  for (int m : {5, 40, 100}) {  // tensor-core GEMM, tensor-core GEMM, dequant + cuBLASLt
+    auto x = round_half(randn(static_cast<size_t>(m) * k, 1.f, 1000 + m));
+    DeviceVec<half> dx(to_half(x)), y(static_cast<size_t>(m) * 2 * inter), act(static_cast<size_t>(m) * inter);
+    exec.forward(plain.lw, dx.get(), m, y.get(), false, 0);
+    EXPECT_CLOSE_VEC(to_float(y.download()), cpu_linear(x, m, L.deq, 2 * inter, k, L.bias), 4e-3);
+    exec.forward_gated(gated.lw, dx.get(), m, act.get(), y.get(), 0);
+    const auto ref = cpu_swiglu(cpu_linear(x, m, L.deq, 2 * inter, k, {}), m, inter);
+    EXPECT_CLOSE_VEC(to_float(act.download()), ref, 6e-3);
   }
 }
 

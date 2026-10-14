@@ -72,6 +72,9 @@ void fused_add_rmsnorm(half* residual, const half* delta, const half* weight, in
                        int hidden, float eps, half* out, cudaStream_t stream);
 // out[r, i] = silu(gate_up[r, i]) * gate_up[r, inter + i]
 void silu_and_mul(const half* gate_up, int rows, int inter, half* out, cudaStream_t stream);
+// Same, for gate/up columns interleaved as (gate_0, up_0, gate_1, up_1, ...).
+void silu_and_mul_interleaved(const half* gate_up, int rows, int inter, half* out,
+                              cudaStream_t stream);
 // dst[i, :] = src[idx[i], :]
 void gather_rows(const half* src, const int32_t* idx, int n, int cols, half* dst,
                  cudaStream_t stream);
@@ -160,6 +163,29 @@ void gemv_w8a16(const half* x, int m, const int8_t* w, const half* scales, const
 void gemv_w4a16(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
                 int group_size, const half* bias, int n, int k, void* y, bool y_fp32,
                 cudaStream_t stream);
+
+// ------------------------------------------------- W4A16 tensor-core GEMM
+// y[m, n] = x[m, k] . dequant(w)^T (+ bias) on tensor cores for m <= kW4TcMaxM, with weights,
+// scales and offsets in the tensor-core layout of core/int4_layout.h. With `silu_mul` the columns
+// are interleaved (gate, up) pairs and y is the fp16 SwiGLU activation [m, n / 2].
+// K is split across CTAs; partials go to `partials` and the last CTA per column block reduces
+// them (deterministically) using `tickets`, which must start zeroed and are left zeroed.
+constexpr int kW4TcMaxM = 64;
+struct W4TcWorkspace {
+  float* partials = nullptr;
+  size_t partial_floats = 0;
+  int* tickets = nullptr;
+  int num_tickets = 0;
+};
+int w4a16_tc_splits(int n, int k, int group_size);
+size_t w4a16_tc_workspace_floats(int max_m, int n, int k, int group_size);
+void gemm_w4a16_tc(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
+                   int group_size, const half* bias, int n, int k, void* y, bool y_fp32,
+                   bool silu_mul, const W4TcWorkspace& ws, cudaStream_t stream);
+// Tensor-core layout -> fp16 weight rows [row_begin, row_end) (64-aligned), for prefill GEMMs.
+void dequantize_weight_int4_tc(const uint8_t* w, const half* scales, const half* offsets, int k,
+                               int group_size, int row_begin, int row_end, half* out,
+                               cudaStream_t stream);
 
 // ------------------------------------------------------------------- sampling
 // Samples one token per logits row (greedy / temperature / top-k / top-p) with

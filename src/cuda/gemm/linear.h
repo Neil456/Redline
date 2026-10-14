@@ -7,6 +7,10 @@
 //                                             | cuBLASLt W8A8 | dequantize + cuBLASLt
 //   INT4     W4A16 GEMV kernel                TensorRT-LLM fpA_intB | GEMV in 16-row chunks
 //                                             (m <= 32) | dequantize + cuBLASLt
+//   INT4/tc  W4A16 tensor-core GEMM (m <= 64, default for INT4)   dequantize (tc layout) + cuBLASLt
+//
+// INT4 weights loaded for the tensor-core kernel use the layout of core/int4_layout.h, and the
+// [gate; up] matrix is column-interleaved so the SwiGLU activation is fused into its epilogue.
 #pragma once
 
 #include <cuda_fp16.h>
@@ -35,6 +39,9 @@ struct LinearWeight {
   // `scales` and `trt_zeros` then use TensorRT-LLM's layout.
   bool trtllm_layout = false;
   const half* trt_zeros = nullptr;
+  // INT4 in the tensor-core layout (core/int4_layout.h); `interleaved` = (gate, up) column pairs.
+  bool int4_tc = false;
+  bool interleaved = false;
 };
 
 enum class PrefillGemm {
@@ -56,6 +63,8 @@ struct LinearOptions {
   PrefillGemm int4_prefill = PrefillGemm::kAuto;
   size_t cublaslt_workspace = 32u << 20;
   size_t dequant_scratch = 64u << 20;  // fp16 scratch for dequantized weight tiles
+  bool int4_tensor_cores = true;       // INT4: tensor-core layout + kernel (else GEMV layout);
+                                       // the engine clears it when no INT4 model is loaded
   int max_m = 2048;                    // largest row count passed to forward()
   int max_k = 0;                       // largest K (needed for W8A8 buffers)
   int max_n = 0;                       // largest N (needed for W8A8 buffers)
@@ -69,6 +78,10 @@ class LinearExecutor {
   // y[m, n] = x[m, k] . W^T (+ bias); y is fp32 when y_fp32 else fp16.
   void forward(const LinearWeight& w, const half* x, int m, void* y, bool y_fp32,
                cudaStream_t stream);
+  // SwiGLU: out[m, n/2] = silu(gate) * up for the fused [gate; up] weight. `scratch` holds
+  // [m, n] fp16 when the activation cannot be fused into the GEMM epilogue.
+  void forward_gated(const LinearWeight& w, const half* x, int m, half* out, half* scratch,
+                     cudaStream_t stream);
 
   const LinearOptions& options() const { return opts_; }
   PrefillGemm resolved_int8_prefill() const { return int8_backend_; }
@@ -92,6 +105,9 @@ class LinearExecutor {
   CublasLtGemm lt_;
   DeviceBuffer dequant_scratch_;
   DeviceBuffer act_q_, act_scales_, acc_i32_;  // W8A8 path
+  void tc_gemm(const LinearWeight& w, const half* x, int m, void* y, bool y_fp32, bool silu_mul,
+               cudaStream_t stream);
+  DeviceBuffer tc_partials_, tc_tickets_;  // tensor-core INT4 split-K workspace
   std::unique_ptr<CutlassMixedGemm> cutlass_;
   std::unique_ptr<TrtllmWeightOnlyGemm> trtllm_;
 };

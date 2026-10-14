@@ -36,6 +36,7 @@ int main(int argc, char** argv) {
           "  --warmup N                   warm-up requests (default 2)\n"
           "  --per-request                include per-request metrics\n"
           "  --trace-out FILE             step-by-step trace for demo/index.html\n"
+          "  --profile-ops                per-op GPU time breakdown (runs eagerly; skews throughput)\n"
           "  --tag NAME                   label stored in the report\n%s",
           cli::engine_options_help());
       return 0;
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
     opts.online = args.flag("online");
     opts.warmup_requests = args.get_int("warmup", opts.warmup_requests);
     opts.keep_per_request = args.flag("per-request");
+    opts.profile_ops = args.flag("profile-ops");
     const std::string out_file = args.get("out");
     const std::string out_dir = args.get("out-dir");
     const std::string tag = args.get("tag", "redline");
@@ -81,6 +83,7 @@ int main(int argc, char** argv) {
       report.set("tag", tag);
       report.set("system", "redline");
       std::fprintf(stderr, "%s\n", format_report_summary(report).c_str());
+      if (opts.profile_ops) std::fprintf(stderr, "%s", format_op_profile(report).c_str());
       if (!out_dir.empty()) report.dump_file(out_dir + "/" + tag + "__" + name + ".json");
       all.push_back(std::move(report));
     }
