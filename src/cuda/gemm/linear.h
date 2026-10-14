@@ -57,7 +57,7 @@ PrefillGemm prefill_gemm_from_name(const std::string& s);
 
 struct LinearOptions {
   int gemv_max_m = 8;              // use the weight-only GEMV kernels up to this many rows
-  int gemv_chunked_max_m = 32;     // beyond that, chunked GEMV (8 rows INT8, 16 rows INT4) up to here;
+  int gemv_chunked_max_m = 32;     // beyond that, chunked GEMV (16 rows per launch) up to here;
                                    // measured on an RTX 4090: past 32 rows dequant + cuBLASLt wins
                                    // (unless a tensor-core mixed-input GEMM is available)
   PrefillGemm int8_prefill = PrefillGemm::kAuto;

@@ -133,7 +133,7 @@ void LinearExecutor::forward(const LinearWeight& w, const half* x, int m, void* 
     // Batched decode: re-streaming quantized weights a few times is still
     // cheaper than materializing an fp16 copy of the layer.
     const size_t elem = y_fp32 ? sizeof(float) : sizeof(half);
-    const int chunk = w.qtype == QuantType::kINT4 ? kernels::kGemvW4MaxM : opts_.gemv_max_m;
+    const int chunk = w.qtype == QuantType::kINT4 ? kernels::kGemvW4MaxM : kernels::kGemvW8MaxM;
     for (int r0 = 0; r0 < m; r0 += chunk) {
       const int rows = std::min(chunk, m - r0);
       gemv(w, x + static_cast<size_t>(r0) * w.k, rows,

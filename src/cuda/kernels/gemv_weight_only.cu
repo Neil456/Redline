@@ -184,6 +184,8 @@ void launch_w8(const half* x, int m, const int8_t* w, const half* scales, const 
   switch (m) {
     RL_W8_CASE(1) RL_W8_CASE(2) RL_W8_CASE(3) RL_W8_CASE(4)
     RL_W8_CASE(5) RL_W8_CASE(6) RL_W8_CASE(7) RL_W8_CASE(8)
+    RL_W8_CASE(9) RL_W8_CASE(10) RL_W8_CASE(11) RL_W8_CASE(12)
+    RL_W8_CASE(13) RL_W8_CASE(14) RL_W8_CASE(15) RL_W8_CASE(16)
     default: throw Error(str_cat("gemv_w8a16: unsupported m=", m));
   }
 #undef RL_W8_CASE

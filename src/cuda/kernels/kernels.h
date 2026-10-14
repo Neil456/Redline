@@ -153,10 +153,11 @@ void dequantize_weight_int4(const uint8_t* w, const half* scales, const half* of
                             cudaStream_t stream);
 
 // ------------------------------------------------------- weight-only GEMV
-// y[m, n] = sum_k x[m, k] * dequant(w)[n, k] (+ bias[n]) for m <= kGemvMaxM (INT8) or
+// y[m, n] = sum_k x[m, k] * dequant(w)[n, k] (+ bias[n]) for m <= kGemvW8MaxM (INT8) or
 // m <= kGemvW4MaxM (INT4). Memory-bound decode kernels: weights streamed once with
 // 16-byte loads and dequantized in registers. y is fp32 when y_fp32, else fp16.
-constexpr int kGemvMaxM = 8;
+constexpr int kGemvMaxM = 8;     // largest --gemv-max-m (rows served by one unchunked GEMV)
+constexpr int kGemvW8MaxM = 16;  // rows per INT8 GEMV launch when chunking larger batches
 constexpr int kGemvW4MaxM = 16;
 void gemv_w8a16(const half* x, int m, const int8_t* w, const half* scales, const half* bias,
                 int n, int k, void* y, bool y_fp32, cudaStream_t stream);

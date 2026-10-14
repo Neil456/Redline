@@ -136,7 +136,6 @@ std::vector<float> cpu_swiglu(const std::vector<float>& gu, int m, int inter) {
 TEST(gemv_weight_only_matches_cpu) {
   for (QuantType q : {QuantType::kINT8, QuantType::kINT4}) {
     for (int m : {1, 3, 8, 13, 16}) {
-      if (q == QuantType::kINT8 && m > kernels::kGemvMaxM) continue;
       for (bool f32 : {false, true}) {
         const int n = 97, k = 512, g = 64;  // odd n exercises the row tail
         QuantLinear L = make_linear(n, k, q, g, /*bias=*/true, 100 + m);
