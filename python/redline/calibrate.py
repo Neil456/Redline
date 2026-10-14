@@ -320,11 +320,17 @@ def calibrate(model_dir: str, method: str, group_size: int, n_samples: int = 128
     dtype = torch.float16 if device.startswith("cuda") else torch.float32
     t_start = time.time()
     tok = None if dataset == "random" else AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModelForCausalLM.from_pretrained(model_dir, dtype=dtype).to(device).eval()
+    # Only the embedding (for capturing layer-0 inputs) and the layer being calibrated live on the device;
+    # an 8B model plus GPTQ Hessians does not fit a 24 GB GPU otherwise.
+    model = AutoModelForCausalLM.from_pretrained(model_dir, dtype=dtype).eval()
+    model.model.embed_tokens.to(device)
+    if getattr(model.model, "rotary_emb", None) is not None:
+        model.model.rotary_emb.to(device)
     cfg = model.config
     tokens = calibration_tokens(tok, dataset, n_samples, seqlen, seed, cfg.vocab_size)
     batches = list(tokens.split(batch_size))
     inps, kwargs = _capture_layer0_inputs(model, batches, device)
+    model.model.embed_tokens.to("cpu")
     take = max(1, math.ceil(awq_tokens / len(batches)))
     mha = cfg.num_attention_heads == (getattr(cfg, "num_key_value_heads", None) or cfg.num_attention_heads)
     if verbose:
@@ -334,6 +340,7 @@ def calibrate(model_dir: str, method: str, group_size: int, n_samples: int = 128
     norms, linears = {}, {}
     for li, layer in enumerate(_layers(model)):
         t0 = time.time()
+        layer.to(device)
         attn, mlp = layer.self_attn, layer.mlp
         sites = {name: SiteStats(use_gptq, awq_tokens) for name in ("attn", "o", "ffn", "down")}
         hooks = [
@@ -405,7 +412,10 @@ def calibrate(model_dir: str, method: str, group_size: int, n_samples: int = 128
         norms[p + "input_layernorm.weight"] = layer.input_layernorm.weight.detach().to(torch.float16).cpu()
         norms[p + "post_attention_layernorm.weight"] = layer.post_attention_layernorm.weight.detach().to(torch.float16).cpu()
         inps = [_run_layer(layer, inp, kwargs) for inp in inps]
+        layer.to("cpu")
         del sites
+        if device.startswith("cuda"):
+            torch.cuda.empty_cache()
         if verbose:
             a = " ".join(f"{k}={v:.2f}" for k, v in alphas.items())
             print(f"  layer {li + 1}/{len(_layers(model))} ({time.time() - t0:.1f}s){' alpha ' + a if a else ''}",

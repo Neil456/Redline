@@ -168,6 +168,12 @@ void LinearExecutor::forward_gated(const LinearWeight& w, const half* x, int m, 
     tc_gemm(w, x, m, out, false, /*silu_mul=*/true, stream);
     return;
   }
+  if (!w.int4_tc && !w.trtllm_layout && w.qtype == QuantType::kINT4 && w.interleaved &&
+      w.bias == nullptr && m <= opts_.gemv_max_m) {
+    kernels::gemv_w4a16_swiglu(x, m, static_cast<const uint8_t*>(w.weight), w.scales, w.offsets,
+                               w.group_size, w.n, w.k, out, stream);
+    return;
+  }
   forward(w, x, m, scratch, false, stream);
   if (w.interleaved) {
     kernels::silu_and_mul_interleaved(scratch, m, inter, out, stream);

@@ -48,7 +48,7 @@ Json EngineConfig::to_json() const {
   j.set("gemv_max_m", linear.gemv_max_m);
   j.set("int8_prefill", prefill_gemm_name(linear.int8_prefill));
   j.set("int4_prefill", prefill_gemm_name(linear.int4_prefill));
-  j.set("int4_kernel", linear.int4_tensor_cores ? "tc" : "gemv");
+  j.set("int4_kernel", int4_kernel);
   return j;
 }
 
@@ -100,7 +100,13 @@ Engine::Engine(const EngineConfig& cfg) : cfg_(cfg) {
     return c.weight_quant == QuantType::kINT4 || c.lm_head_quant == QuantType::kINT4;
   };
   const bool int4_trtllm = lo.int4_prefill == PrefillGemm::kTrtllm;
-  lo.int4_tensor_cores = lo.int4_tensor_cores && !int4_trtllm && (has_int4(mc) || (spec && has_int4(dc)));
+  constexpr int kInt4GemvMaxRows = 4;
+  const int max_decode_rows = cfg_.max_num_seqs * (spec ? cfg_.num_speculative_tokens + 1 : 1);
+  RL_CHECK(cfg_.int4_kernel == "auto" || cfg_.int4_kernel == "tc" || cfg_.int4_kernel == "gemv",
+           "int4_kernel must be auto, tc or gemv");
+  const bool want_tc = cfg_.int4_kernel == "tc" ||
+                       (cfg_.int4_kernel == "auto" && max_decode_rows > kInt4GemvMaxRows);
+  lo.int4_tensor_cores = want_tc && !int4_trtllm && (has_int4(mc) || (spec && has_int4(dc)));
   if (lo.int4_tensor_cores) {  // an INT4 lm_head also runs on the tensor-core kernel
     if (mc.lm_head_quant == QuantType::kINT4) lo.max_n = std::max(lo.max_n, mc.vocab_size);
     if (spec && dc.lm_head_quant == QuantType::kINT4) lo.max_n = std::max(lo.max_n, dc.vocab_size);

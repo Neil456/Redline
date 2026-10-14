@@ -1,5 +1,8 @@
 // GEMM tests: weight-only GEMV kernels, cuBLASLt FP16/INT8 wrappers and every
 // LinearExecutor path (GEMV, chunked GEMV, dequantize+cuBLASLt, W8A8, CUTLASS).
+#include <algorithm>
+#include <type_traits>
+
 #include "core/int4_layout.h"
 #include "cpu/random_model.h"
 #include "cuda/gemm/cublaslt_gemm.h"
@@ -249,6 +252,43 @@ TEST(linear_executor_int4_tensor_core_paths) {
     EXPECT_CLOSE_VEC(to_float(y.download()), cpu_linear(x, m, L.deq, 2 * inter, k, L.bias), 4e-3);
     exec.forward_gated(gated.lw, dx.get(), m, act.get(), y.get(), 0);
     const auto ref = cpu_swiglu(cpu_linear(x, m, L.deq, 2 * inter, k, {}), m, inter);
+    EXPECT_CLOSE_VEC(to_float(act.download()), ref, 6e-3);
+  }
+}
+
+TEST(gemv_w4a16_swiglu_interleaved_rows) {
+  const int inter = 192, n = 2 * inter, k = 256, g = 64;
+  QuantLinear L = make_linear(n, k, QuantType::kINT4, g, /*bias=*/false, 1100);
+  // Rows (gate_i, up_i) interleaved, as the loader stores INT4 [gate; up] in the GEMV layout.
+  auto interleave = [&](const auto& v, size_t row_elems) {
+    std::remove_const_t<std::remove_reference_t<decltype(v)>> out(v.size());
+    for (int i = 0; i < inter; ++i) {
+      std::copy_n(v.begin() + i * row_elems, row_elems, out.begin() + (2 * i) * row_elems);
+      std::copy_n(v.begin() + (inter + i) * row_elems, row_elems, out.begin() + (2 * i + 1) * row_elems);
+    }
+    return out;
+  };
+  DeviceVec<uint8_t> w(interleave(L.w.download(), k / 2));
+  DeviceVec<half> sc(interleave(L.scales.download(), k / g)), of(interleave(L.offsets.download(), k / g));
+  LinearWeight lw = L.lw;
+  lw.weight = w.get();
+  lw.scales = sc.get();
+  lw.offsets = of.get();
+  lw.bias = nullptr;
+  lw.interleaved = true;
+  LinearOptions lo;
+  lo.int4_tensor_cores = false;
+  lo.max_m = 256;
+  lo.max_k = k;
+  lo.max_n = n;
+  lo.dequant_scratch = 64 * k * 2;
+  MemoryLedger ledger;
+  LinearExecutor exec(lo, &ledger);
+  for (int m : {1, 3, 8, 20, 100}) {  // fused GEMV epilogue, chunked GEMV + kernel, dequant + kernel
+    auto x = round_half(randn(static_cast<size_t>(m) * k, 1.f, 1200 + m));
+    DeviceVec<half> dx(to_half(x)), act(static_cast<size_t>(m) * inter), scratch(static_cast<size_t>(m) * n);
+    exec.forward_gated(lw, dx.get(), m, act.get(), scratch.get(), 0);
+    const auto ref = cpu_swiglu(cpu_linear(x, m, L.deq, n, k, {}), m, inter);
     EXPECT_CLOSE_VEC(to_float(act.download()), ref, 6e-3);
   }
 }

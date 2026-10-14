@@ -85,11 +85,7 @@ EngineConfig engine_config_from_args(const Args& a) {
   c.linear.gemv_max_m = a.get_int("gemv-max-m", c.linear.gemv_max_m);
   c.linear.int8_prefill = prefill_gemm_from_name(a.get("int8-gemm", "auto"));
   c.linear.int4_prefill = prefill_gemm_from_name(a.get("int4-gemm", "auto"));
-  {
-    const std::string k4 = a.get("int4-kernel", "tc");
-    RL_CHECK(k4 == "tc" || k4 == "gemv", "--int4-kernel must be tc or gemv");
-    c.linear.int4_tensor_cores = k4 == "tc";
-  }
+  c.int4_kernel = a.get("int4-kernel", "auto");
   c.nvtx_per_layer = a.flag("nvtx-layers");
   c.track_memory = a.flag("track-memory");
   c.device = a.get_int("device", 0);
@@ -109,7 +105,8 @@ const char* engine_options_help() {
   --kv-dtype fp16|int8         KV cache precision (default fp16)
   --int8-gemm auto|dequant|w8a8|cutlass|trtllm   batched INT8 GEMM backend
   --int4-gemm auto|dequant|trtllm                batched INT4 GEMM backend
-  --int4-kernel tc|gemv        INT4 decode kernel: tensor-core W4A16 GEMM (default) or GEMV
+  --int4-kernel auto|tc|gemv   INT4 decode kernel: tensor-core GEMM, GEMV, or auto (default:
+                               tensor cores when more than 4 decode rows can run per step)
   --gemv-max-m N               rows handled by weight-only GEMV kernels (default 8)
   --no-cuda-graphs             disable CUDA graph replay for decode
   --no-async                   disable asynchronous (pipelined) scheduling

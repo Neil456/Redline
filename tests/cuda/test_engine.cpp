@@ -253,7 +253,7 @@ TEST(engine_op_profile_and_int4_kernels_agree) {
   // reference margin), and the op profiler attributes every op once per layer.
   for (bool tc : {true, false}) {
     EngineConfig cfg = small_config(path);
-    cfg.linear.int4_tensor_cores = tc;
+    cfg.int4_kernel = tc ? "tc" : "gemv";
     Engine engine(cfg);
     check_greedy(path, engine.generate(make_requests(4, 40, 12, 21)), 0.05f);
   }

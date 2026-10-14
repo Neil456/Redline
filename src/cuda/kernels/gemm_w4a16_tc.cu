@@ -116,11 +116,33 @@ gemm_w4a16_tc_kernel(const half* __restrict__ x, int m, const uint4* __restrict_
     const uint4* ot = offsets + static_cast<size_t>(nt) * groups * 8 + g;
     int cur_group = -1;
     uint4 sv = make_uint4(0, 0, 0, 0), ov = sv;
-    for (int kk = k0; kk < k1; kk += 16 * U) {
-      // Issue the weight loads for U k-steps first (the bytes that come from DRAM).
-      uint4 wv[U];
+    // Software pipeline: the next chunk's weights are in flight while this chunk computes, and a
+    // chunk's activation fragments are loaded together (one L2 round trip per chunk, not per step).
+    uint4 wv[U];
 #pragma unroll
-      for (int u = 0; u < U; ++u) wv[u] = __ldg(wt + static_cast<size_t>(kk / 16 + u) * 32);
+    for (int u = 0; u < U; ++u) wv[u] = __ldg(wt + static_cast<size_t>(k0 / 16 + u) * 32);
+    for (int kk = k0; kk < k1; kk += 16 * U) {
+      const bool has_next = kk + 16 * U < k1;
+      uint4 wn[U];
+      if (has_next) {
+#pragma unroll
+        for (int u = 0; u < U; ++u) wn[u] = __ldg(wt + static_cast<size_t>(kk / 16 + U + u) * 32);
+      }
+      uint32_t a[U][MB][4];
+#pragma unroll
+      for (int u = 0; u < U; ++u) {
+        const int kc = kk + 16 * u + 2 * t;
+#pragma unroll
+        for (int mb = 0; mb < MB; ++mb) {
+          const int r0 = mb * 16 + g, r1 = r0 + 8;
+          const half* x0 = x + static_cast<size_t>(r0) * k + kc;
+          const half* x1 = x + static_cast<size_t>(r1) * k + kc;
+          a[u][mb][0] = r0 < m ? ld_x2(x0) : 0u;
+          a[u][mb][1] = r1 < m ? ld_x2(x1) : 0u;
+          a[u][mb][2] = r0 < m ? ld_x2(x0 + 8) : 0u;
+          a[u][mb][3] = r1 < m ? ld_x2(x1 + 8) : 0u;
+        }
+      }
       const int grp = kk / group_size;  // U k-steps never cross a group (group_size % 16U == 0)
       if (grp != cur_group) {
         cur_group = grp;
@@ -131,18 +153,6 @@ gemm_w4a16_tc_kernel(const half* __restrict__ x, int m, const uint4* __restrict_
       const half* oh = reinterpret_cast<const half*>(&ov);
 #pragma unroll
       for (int u = 0; u < U; ++u) {
-        const int kc = kk + 16 * u + 2 * t;
-        uint32_t a[MB][4];
-#pragma unroll
-        for (int mb = 0; mb < MB; ++mb) {
-          const int r0 = mb * 16 + g, r1 = r0 + 8;
-          const half* x0 = x + static_cast<size_t>(r0) * k + kc;
-          const half* x1 = x + static_cast<size_t>(r1) * k + kc;
-          a[mb][0] = r0 < m ? ld_x2(x0) : 0u;
-          a[mb][1] = r1 < m ? ld_x2(x1) : 0u;
-          a[mb][2] = r0 < m ? ld_x2(x0 + 8) : 0u;
-          a[mb][3] = r1 < m ? ld_x2(x1 + 8) : 0u;
-        }
         const uint32_t words[4] = {wv[u].x, wv[u].y, wv[u].z, wv[u].w};
 #pragma unroll
         for (int c = 0; c < 4; ++c) {
@@ -154,10 +164,14 @@ gemm_w4a16_tc_kernel(const half* __restrict__ x, int m, const uint4* __restrict_
           const uint32_t b10 = h2_as_u32(__hfma2(f[2], s1, o1)), b11 = h2_as_u32(__hfma2(f[3], s1, o1));
 #pragma unroll
           for (int mb = 0; mb < MB; ++mb) {
-            mma_16816(acc[mb][2 * c], a[mb], b00, b01);
-            mma_16816(acc[mb][2 * c + 1], a[mb], b10, b11);
+            mma_16816(acc[mb][2 * c], a[u][mb], b00, b01);
+            mma_16816(acc[mb][2 * c + 1], a[u][mb], b10, b11);
           }
         }
+      }
+      if (has_next) {
+#pragma unroll
+        for (int u = 0; u < U; ++u) wv[u] = wn[u];
       }
     }
   }

@@ -39,7 +39,8 @@ struct LinearWeight {
   // `scales` and `trt_zeros` then use TensorRT-LLM's layout.
   bool trtllm_layout = false;
   const half* trt_zeros = nullptr;
-  // INT4 in the tensor-core layout (core/int4_layout.h); `interleaved` = (gate, up) column pairs.
+  // INT4 in the tensor-core layout (core/int4_layout.h). `interleaved`: the [gate; up] rows are
+  // stored as (gate_i, up_i) pairs (either layout), so SwiGLU can run in the GEMM epilogue.
   bool int4_tc = false;
   bool interleaved = false;
 };

@@ -53,6 +53,11 @@ struct EngineConfig {
   bool async_scheduling = true;
   bool mix_prefill_decode = true;
   LinearOptions linear;
+  // INT4 decode kernel: "tc" (tensor-core GEMM), "gemv" (CUDA-core GEMV layout) or "auto": tensor
+  // cores when more than kInt4GemvMaxRows decode rows can run in one step (max_num_seqs, times
+  // k + 1 with speculative decoding), GEMV otherwise. Measured on an RTX 4090 with Llama 3.1 8B:
+  // GEMV is ~10% faster at 1-4 rows, tensor cores win from 8 rows (2.9x at 32).
+  std::string int4_kernel = "auto";
   bool nvtx_per_layer = false;
   bool track_memory = false;  // sample cudaMemGetInfo every step for peak usage
   int device = 0;

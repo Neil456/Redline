@@ -163,6 +163,11 @@ void gemv_w8a16(const half* x, int m, const int8_t* w, const half* scales, const
 void gemv_w4a16(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
                 int group_size, const half* bias, int n, int k, void* y, bool y_fp32,
                 cudaStream_t stream);
+// Same kernel for a [gate; up] weight whose rows are interleaved (gate_i, up_i): writes the
+// SwiGLU activation silu(gate) * up, fp16 [m, n / 2], from the GEMV epilogue.
+void gemv_w4a16_swiglu(const half* x, int m, const uint8_t* w, const half* scales,
+                       const half* offsets, int group_size, int n, int k, half* y,
+                       cudaStream_t stream);
 
 // ------------------------------------------------- W4A16 tensor-core GEMM
 // y[m, n] = x[m, k] . dequant(w)^T (+ bias) on tensor cores for m <= kW4TcMaxM, with weights,

@@ -43,6 +43,24 @@ __device__ __forceinline__ void store_outputs(float (&acc)[kRows][M], int row0, 
   }
 }
 
+// Rows (row0, row0 + 1) hold (gate_i, up_i) with i = row0 / 2: writes silu(gate) * up, fp16
+// [m, n / 2], with the rounding points of the unfused path (fp16 GEMM outputs, fp16 SiLU).
+template <int M>
+__device__ __forceinline__ void store_swiglu(float (&acc)[kRows][M], int row0, int n, void* y, int lane) {
+#pragma unroll
+  for (int r = 0; r < kRows; ++r)
+#pragma unroll
+    for (int m = 0; m < M; ++m) acc[r][m] = warp_reduce_sum(acc[r][m]);
+  if (lane != 0 || row0 + 1 >= n) return;
+#pragma unroll
+  for (int m = 0; m < M; ++m) {
+    const float g = __half2float(__float2half_rn(acc[0][m]));
+    const float u = __half2float(__float2half_rn(acc[1][m]));
+    const float s = __half2float(__float2half_rn(g / (1.f + __expf(-g))));
+    static_cast<half*>(y)[static_cast<size_t>(m) * (n / 2) + row0 / 2] = __float2half_rn(s * u);
+  }
+}
+
 // INT8 per-channel: each lane consumes 16 consecutive k per iteration.
 template <int M, bool kOutF32>
 __global__ void __launch_bounds__(kGemvThreads)
@@ -83,7 +101,8 @@ gemv_w8a16_kernel(const half* __restrict__ x, const int8_t* __restrict__ w,
 // INT4 group-wise: each lane consumes 32 consecutive k (16 bytes) per
 // iteration; the 32 values share one (scale, offset) because group_size is a
 // multiple of 32. y = s * sum(x * q) + o * sum(x).
-template <int M, bool kOutF32>
+// kMode: 0 = fp16 out, 1 = fp32 out, 2 = SwiGLU of interleaved (gate, up) rows.
+template <int M, int kMode>
 __global__ void __launch_bounds__(kGemvThreads)
 gemv_w4a16_kernel(const half* __restrict__ x, const uint8_t* __restrict__ w,
                   const half* __restrict__ scales, const half* __restrict__ offsets,
@@ -145,7 +164,11 @@ gemv_w4a16_kernel(const half* __restrict__ x, const uint8_t* __restrict__ w,
 #pragma unroll
       for (int m = 0; m < M; ++m) acc[r][m] += s[r] * dot[r][m] + o[r] * xsum[m];
   }
-  store_outputs<M, kOutF32>(acc, row0, n, nullptr, bias, y, lane, false);
+  if constexpr (kMode == 2) {
+    store_swiglu<M>(acc, row0, n, y, lane);
+  } else {
+    store_outputs<M, kMode == 1>(acc, row0, n, nullptr, bias, y, lane, false);
+  }
 }
 
 int gemv_blocks(int n) { return (n + kGemvWarps * kRows - 1) / (kGemvWarps * kRows); }
@@ -167,14 +190,14 @@ void launch_w8(const half* x, int m, const int8_t* w, const half* scales, const 
   RL_CUDA_CHECK_LAUNCH();
 }
 
-template <bool kOutF32>
+template <int kMode>
 void launch_w4(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
                int group_size, const half* bias, int n, int k, void* y, cudaStream_t s) {
   const int blocks = gemv_blocks(n);
 #define RL_W4_CASE(MM)                                                                     \
   case MM:                                                                                 \
-    gemv_w4a16_kernel<MM, kOutF32><<<blocks, kGemvThreads, 0, s>>>(x, w, scales, offsets,  \
-                                                                   group_size, bias, n, k, y); \
+    gemv_w4a16_kernel<MM, kMode><<<blocks, kGemvThreads, 0, s>>>(x, w, scales, offsets,    \
+                                                                 group_size, bias, n, k, y); \
     break;
   switch (m) {
     RL_W4_CASE(1) RL_W4_CASE(2) RL_W4_CASE(3) RL_W4_CASE(4)
@@ -207,10 +230,19 @@ void gemv_w4a16(const half* x, int m, const uint8_t* w, const half* scales, cons
   RL_CHECK(k % 32 == 0 && group_size % 32 == 0 && k % group_size == 0,
            "gemv_w4a16 needs K and group_size multiples of 32");
   if (y_fp32) {
-    launch_w4<true>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
+    launch_w4<1>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
   } else {
-    launch_w4<false>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
+    launch_w4<0>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
   }
+}
+
+void gemv_w4a16_swiglu(const half* x, int m, const uint8_t* w, const half* scales,
+                       const half* offsets, int group_size, int n, int k, half* y,
+                       cudaStream_t stream) {
+  if (m <= 0) return;
+  RL_CHECK(k % 32 == 0 && group_size % 32 == 0 && k % group_size == 0 && n % 2 == 0,
+           "gemv_w4a16_swiglu: bad shape");
+  launch_w4<2>(x, m, w, scales, offsets, group_size, nullptr, n, k, y, stream);
 }
 
 }  // namespace kernels

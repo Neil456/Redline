@@ -112,6 +112,19 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
     auto it = tc.find(name.substr(0, dot));
     return it == tc.end() ? nullptr : &it->second;
   };
+  // INT4 [gate; up] weights that stay in the GEMV layout get their rows interleaved instead
+  // ((gate_i, up_i) pairs), so the GEMV epilogue can apply SwiGLU (kernels::gemv_w4a16_swiglu).
+  std::map<std::string, bool> row_interleave;
+  if (cfg.weight_quant == QuantType::kINT4 && cfg.group_size % 32 == 0) {
+    for (int l = 0; l < cfg.num_layers; ++l) {
+      const std::string p = "layers." + std::to_string(l) + ".w_gate_up";
+      if (tc.count(p) || converted_by_trtllm(p + ".weight") || file.has(p + ".bias")) continue;
+      row_interleave[p] = true;
+    }
+  }
+  auto interleaves_rows = [&](const std::string& name) {
+    return row_interleave.count(name.substr(0, name.rfind('.'))) > 0;
+  };
 
   std::map<std::string, size_t> offsets;
   size_t total = 0;
@@ -141,6 +154,18 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
         }
         up.upload(base + kv.second, tmp.data(), ti.nbytes);
         up.finish();  // tmp is reused for the next tensor
+      } else if (interleaves_rows(kv.first) && suffix != "bias") {
+        // [gate; up] rows -> (gate_0, up_0, gate_1, up_1, ...)
+        const size_t rows = static_cast<size_t>(ti.shape[0]), half_rows = rows / 2;
+        const size_t row_bytes = ti.nbytes / rows;
+        const auto* src = static_cast<const uint8_t*>(file.data(ti));
+        tmp.resize(ti.nbytes);
+        for (size_t i = 0; i < half_rows; ++i) {
+          std::memcpy(tmp.data() + (2 * i) * row_bytes, src + i * row_bytes, row_bytes);
+          std::memcpy(tmp.data() + (2 * i + 1) * row_bytes, src + (half_rows + i) * row_bytes, row_bytes);
+        }
+        up.upload(base + kv.second, tmp.data(), ti.nbytes);
+        up.finish();
       } else {
         up.upload(base + kv.second, file.data(ti), ti.nbytes);
       }
@@ -189,6 +214,8 @@ std::unique_ptr<ModelWeights> ModelWeights::load(const std::string& path, Memory
     if (auto it = tc.find(prefix); it != tc.end()) {
       lw.int4_tc = true;
       lw.interleaved = it->second.interleave;
+    } else if (row_interleave.count(prefix)) {
+      lw.interleaved = true;
     }
     return lw;
   };
