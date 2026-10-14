@@ -1,6 +1,7 @@
 # Redline walkthrough (interview guide)
 
-Open `demo/index.html` (or the hosted copy) and follow the sections in order.
+Run `python3 demo/open_demo.py` from the repository root (it opens `demo/index.html`, which works offline
+and needs no GPU), or open the hosted copy, and follow the sections in order.
 Each section has a talk track, a live figure, and a link to the code behind it.
 Plan on about 8–10 minutes. Spend longer wherever the interviewer digs in.
 

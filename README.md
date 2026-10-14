@@ -1,10 +1,57 @@
 # Redline: Low-Latency CUDA Transformer Runtime
 
-Redline is a C++/CUDA inference engine for Llama-family LLMs. It gives you
-explicit control over model execution, KV-cache allocation, token sampling,
-batching and GPU memory. It ships with a C++ benchmarking harness and Python
-tooling for model conversion and INT8/INT4 quantization, and it can benchmark
-against Hugging Face Transformers and vLLM on the same workloads.
+Redline is a C++/CUDA inference engine that serves Llama-family models on one GPU and owns the parts of the
+decode path that frameworks usually hide: scheduling, KV-cache memory, kernels and sampling. A
+continuous-batching scheduler mixes chunked prefill with decode every step, storing keys and values in a
+paged KV cache (one GPU allocation cut into 16-token blocks) and preempting the newest request when memory
+runs out. To keep the GPU busy, the host plans step *t+1* while step *t* is still running, uploads each
+step's metadata in a single pinned-memory copy, replays decode steps as CUDA graphs, and samples tokens on
+the GPU so they feed the next step without a round trip to the CPU. Because decode is memory-bound,
+weights can be stored as INT8 or INT4 and dequantized in registers by custom GEMV kernels, attention reads
+each K/V vector once per GQA group, and a small draft model can propose tokens that the target verifies
+losslessly in one pass. A benchmark harness timed with CUDA events and NVTX runs identical workloads
+through Redline, Hugging Face Transformers and vLLM, and reports time to first token, per-token latency,
+throughput, peak memory and draft acceptance.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/decode_batch1-dark.svg">
+    <img src="docs/img/decode_batch1-light.svg" width="49%" alt="Decode speed for one request on Llama 3.1 8B, RTX 4090, tokens per second: Redline INT4 with speculative decoding 217, Redline INT4 174, vLLM AWQ INT4 164, Redline INT8 110, vLLM FP16 60, Redline FP16 60, HF Transformers FP16 51.">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/memory_quality-dark.svg">
+    <img src="docs/img/memory_quality-light.svg" width="49%" alt="Peak GPU memory at batch 8 with 1024-token prompts: HF Transformers FP16 18.4 GiB, Redline FP16 17.0, Redline INT8 10.0 (99.6% quality retention), Redline INT8 with INT8 KV cache 9.4, Redline INT4 7.0 (94.8% quality retention).">
+  </picture>
+</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/batch_sweep-dark.svg">
+    <img src="docs/img/batch_sweep-light.svg" width="98%" alt="Decode throughput versus batch size from 1 to 32 for Redline FP16, INT8 and INT4, vLLM FP16, vLLM AWQ INT4 and HF Transformers FP16. Redline INT4 is the fastest system at batch 1 to 4; past batch 8 vLLM's tensor-core AWQ kernel keeps scaling to 2,758 tokens/s while Redline INT4 levels off at about 925.">
+  </picture>
+</p>
+
+<sub>Measured on one RTX 4090 with Llama 3.1 8B Instruct (Llama 3.2 1B draft). Every system ran the same
+workload files. Full methodology and raw data: [`results/rtx4090/`](results/rtx4090/README.md). The charts
+are generated from that data by `python scripts/plot_results.py`.</sub>
+
+## Run the interactive tour locally
+
+The tour is one self-contained HTML page. It needs only Python 3.8+, no GPU and no dependencies:
+
+```bash
+git clone https://github.com/neil456/redline.git && cd redline
+python3 demo/open_demo.py            # opens demo/index.html in your browser
+python3 demo/open_demo.py --serve    # or serve it at http://localhost:8000
+```
+
+It walks through one decode step with a live figure for each idea:
+- async scheduling and CUDA graphs;
+- the paged KV cache and the scheduler;
+- bytes moved per token for FP16, INT8 and INT4;
+- speculative decoding.
+
+It also includes the measured RTX 4090 results, three recorded engine traces, and a code map that points
+at the source. [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) is the talk track for presenting it.
 
 Supported models: `LlamaForCausalLM` (Llama 2/3/3.1/3.2, TinyLlama),
 `MistralForCausalLM`, `Qwen2ForCausalLM` — FP16 activations, head_dim 64/128,
@@ -22,16 +69,6 @@ any GQA ratio up to 8.
  └───────────────┘   └───────────────┘   │ (D2H, one step lag)  │   │ GPU sampling → ids feed next step  │
                                          └──────────────────────┘   └────────────────────────────────────┘
 ```
-
-## Interactive tour
-
-`demo/index.html` is a self-contained page (open it in a browser) that walks
-through one decode step. It has a live figure for each idea: async scheduling
-vs CUDA graphs, the paged KV cache and scheduler, bytes moved per token for
-FP16/INT8/INT4, and speculative decoding. It also has a viewer for real
-`redline_bench --trace-out` traces and a code map whose excerpts are pulled
-from the source at build time (`python demo/build_demo.py [--trace trace.json]`).
-`docs/WALKTHROUGH.md` is the talk track for presenting it.
 
 ## What is implemented
 

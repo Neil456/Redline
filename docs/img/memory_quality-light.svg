@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="430" height="346" viewBox="0 0 430 346" role="img" aria-label="Peak GPU memory and quality" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+<title>Peak GPU memory and quality</title>
+<text x="0.0" y="18.0" font-size="15" font-weight="600" fill="#1f2328" text-anchor="start">Peak GPU memory and quality</text>
+<text x="0.0" y="37.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="start">Batch 8, 1024-token prompts · GiB (lower is better)</text>
+<rect x="0" y="53" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text x="15.0" y="62.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="start">Redline</text>
+<rect x="79.19999999999999" y="53" width="10" height="10" rx="2" fill="#8c959f"/>
+<text x="94.2" y="62.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="start">Baselines</text>
+<line x1="150.0" y1="86.0" x2="150.0" y2="236.0" stroke="#c8d0d8" stroke-width="1"/>
+<text x="150.0" y="252.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="middle" style="font-variant-numeric:tabular-nums">0</text>
+<line x1="189.5" y1="86.0" x2="189.5" y2="236.0" stroke="#e6e9ed" stroke-width="1"/>
+<text x="189.5" y="252.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="middle" style="font-variant-numeric:tabular-nums">5</text>
+<line x1="229.0" y1="86.0" x2="229.0" y2="236.0" stroke="#e6e9ed" stroke-width="1"/>
+<text x="229.0" y="252.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="middle" style="font-variant-numeric:tabular-nums">10</text>
+<line x1="268.5" y1="86.0" x2="268.5" y2="236.0" stroke="#e6e9ed" stroke-width="1"/>
+<text x="268.5" y="252.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="middle" style="font-variant-numeric:tabular-nums">15</text>
+<line x1="308.0" y1="86.0" x2="308.0" y2="236.0" stroke="#e6e9ed" stroke-width="1"/>
+<text x="308.0" y="252.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="middle" style="font-variant-numeric:tabular-nums">20</text>
+<text x="308.0" y="268.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="end">GiB</text>
+<text x="430.0" y="80.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="end">quality</text>
+<text x="140.0" y="105.0" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="end">HF Transformers FP16</text>
+<path d="M150.0,92.0 h141.1 a4,4 0 0 1 4,4 v10.0 a4,4 0 0 1 -4,4 h-141.1 z" fill="#8c959f"/>
+<text x="301.1" y="105.0" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start" style="font-variant-numeric:tabular-nums">18.4</text>
+<text x="430.0" y="105.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="end" style="font-variant-numeric:tabular-nums">reference</text>
+<text x="140.0" y="135.0" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="end">Redline FP16</text>
+<path d="M150.0,122.0 h130.2 a4,4 0 0 1 4,4 v10.0 a4,4 0 0 1 -4,4 h-130.2 z" fill="#2a78d6"/>
+<text x="290.2" y="135.0" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start" style="font-variant-numeric:tabular-nums">17.0</text>
+<text x="430.0" y="135.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="end" style="font-variant-numeric:tabular-nums">–</text>
+<text x="140.0" y="165.0" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="end">Redline INT8</text>
+<path d="M150.0,152.0 h75.0 a4,4 0 0 1 4,4 v10.0 a4,4 0 0 1 -4,4 h-75.0 z" fill="#2a78d6"/>
+<text x="235.0" y="165.0" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start" style="font-variant-numeric:tabular-nums">10.0</text>
+<text x="430.0" y="165.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="end" style="font-variant-numeric:tabular-nums">99.6%</text>
+<text x="140.0" y="195.0" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="end">Redline INT8 + INT8 KV</text>
+<path d="M150.0,182.0 h70.1 a4,4 0 0 1 4,4 v10.0 a4,4 0 0 1 -4,4 h-70.1 z" fill="#2a78d6"/>
+<text x="230.1" y="195.0" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start" style="font-variant-numeric:tabular-nums">9.4</text>
+<text x="430.0" y="195.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="end" style="font-variant-numeric:tabular-nums">–</text>
+<text x="140.0" y="225.0" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="end">Redline INT4</text>
+<path d="M150.0,212.0 h51.0 a4,4 0 0 1 4,4 v10.0 a4,4 0 0 1 -4,4 h-51.0 z" fill="#2a78d6"/>
+<text x="211.0" y="225.0" font-size="12" font-weight="600" fill="#1f2328" text-anchor="start" style="font-variant-numeric:tabular-nums">7.0</text>
+<text x="430.0" y="225.0" font-size="12" font-weight="400" fill="#59636e" text-anchor="end" style="font-variant-numeric:tabular-nums">94.8%</text>
+<text x="0.0" y="342.0" font-size="11" font-weight="400" fill="#818b98" text-anchor="start">Quality: mean retention on WikiText-2, HellaSwag, ARC-E/C.</text>
+</svg>
