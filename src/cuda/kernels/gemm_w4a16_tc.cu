@@ -202,26 +202,31 @@ gemm_w4a16_tc_kernel(const half* __restrict__ x, int m, const uint4* __restrict_
     if (!is_last) return;
     __threadfence();
     if (active) {
+      // Splits outermost: each split's loads for the whole tile are issued together, so the
+      // reduction costs one L2 round trip per split rather than one per (output, split). The
+      // per-element order is still s = 0, 1, ...: deterministic.
 #pragma unroll
       for (int mb = 0; mb < MB; ++mb)
 #pragma unroll
-        for (int j = 0; j < 8; ++j)
+        for (int j = 0; j < 8; ++j) acc[mb][j][0] = acc[mb][j][1] = acc[mb][j][2] = acc[mb][j][3] = 0.f;
+#pragma unroll 2
+      for (int s = 0; s < splits; ++s) {
+        const float* ps = partials + static_cast<size_t>(s) * m * n;
 #pragma unroll
-          for (int h = 0; h < 2; ++h) {
-            const int row = mb * 16 + g + 8 * h;
-            if (row < m) {
-              const int col = nt * 64 + j * 8 + 2 * t;
-              float2 sum = make_float2(0.f, 0.f);
-              for (int s = 0; s < splits; ++s) {  // fixed order: deterministic
+        for (int mb = 0; mb < MB; ++mb)
+#pragma unroll
+          for (int j = 0; j < 8; ++j)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+              const int row = mb * 16 + g + 8 * h;
+              if (row < m) {
                 const float2 p = __ldcg(reinterpret_cast<const float2*>(
-                    partials + (static_cast<size_t>(s) * m + row) * n + col));
-                sum.x += p.x;
-                sum.y += p.y;
+                    ps + static_cast<size_t>(row) * n + nt * 64 + j * 8 + 2 * t));
+                acc[mb][j][2 * h] += p.x;
+                acc[mb][j][2 * h + 1] += p.y;
               }
-              acc[mb][j][2 * h] = sum.x;
-              acc[mb][j][2 * h + 1] = sum.y;
             }
-          }
+      }
     }
     if (threadIdx.x == 0) tickets[blockIdx.x] = 0;  // ready for the next GEMM on this stream
   }
