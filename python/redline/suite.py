@@ -65,6 +65,8 @@ def main(argv=None) -> None:
     ap.add_argument("--hf", help="HF model id for the Transformers baseline")
     ap.add_argument("--hf-quant", action="append", default=[], help="extra HF baselines: bnb8, bnb4")
     ap.add_argument("--vllm", help="HF model id for the vLLM baseline")
+    ap.add_argument("--vllm-python", default=sys.executable,
+                    help="interpreter for the vLLM baseline (vLLM pins its own torch, so it often lives in a venv)")
     ap.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
     ap.add_argument("--max-seq-len", type=int, default=4096, help="vLLM max_model_len")
     ap.add_argument("--dry-run", action="store_true")
@@ -103,7 +105,7 @@ def main(argv=None) -> None:
             run(cmd, args.dry_run)
     if args.vllm:
         for (kind, batch), paths in sorted(groups.items()):
-            cmd = [py, "-m", "redline.baselines.vllm_bench", "--model", args.vllm, "--out", args.out,
+            cmd = [args.vllm_python, "-m", "redline.baselines.vllm_bench", "--model", args.vllm, "--out", args.out,
                    "--max-num-seqs", str(batch), "--max-model-len", str(args.max_seq_len),
                    "--gpu-memory-utilization", str(args.vllm_gpu_memory_utilization)]
             for p in paths:

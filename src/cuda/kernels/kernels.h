@@ -139,6 +139,9 @@ void dequantize_int32_gemm_output(const int32_t* acc, const float* row_scales,
 // y[m, n] = y[m, n] * col_scale[n] * multiplier (+ bias[n]), in place.
 void scale_columns(half* y, const half* col_scales, float multiplier, const half* bias, int rows,
                    int cols, cudaStream_t stream);
+// y[m, n] += bias[n] for an fp32 output with row stride ldy (cuBLASLt has no fp16-bias epilogue
+// for fp32 outputs).
+void add_bias_f32(float* y, const half* bias, int rows, int cols, int ldy, cudaStream_t stream);
 // Dequantize weight rows [row_begin, row_end) into out [row_end - row_begin, k].
 void dequantize_weight_int8(const int8_t* w, const half* scales, int k, int row_begin,
                             int row_end, half* out, cudaStream_t stream);

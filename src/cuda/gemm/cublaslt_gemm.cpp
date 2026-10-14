@@ -1,6 +1,7 @@
 #include "cuda/gemm/cublaslt_gemm.h"
 
 #include "cuda/cuda_utils.h"
+#include "cuda/kernels/kernels.h"
 
 #define RL_CUBLAS_CHECK(expr)                                                               \
   do {                                                                                      \
@@ -96,14 +97,17 @@ CublasLtGemm::Plan& CublasLtGemm::plan_int8(int m, int n, int k) {
 void CublasLtGemm::gemm_fp16(const half* x, const half* w, const half* bias, void* y, bool y_fp32,
                              int m, int n, int k, int ldy, cudaStream_t stream) {
   if (m <= 0) return;
-  Plan& p = plan_fp16(m, n, k, ldy, y_fp32, bias != nullptr);
-  if (bias) {
+  // The bias epilogue needs bias and D of the same precision, so fp32 outputs add it separately.
+  const bool bias_epilogue = bias != nullptr && !y_fp32;
+  Plan& p = plan_fp16(m, n, k, ldy, y_fp32, bias_epilogue);
+  if (bias_epilogue) {
     RL_CUBLAS_CHECK(cublasLtMatmulDescSetAttribute(p.desc, CUBLASLT_MATMUL_DESC_BIAS_POINTER, &bias,
                                                    sizeof(bias)));
   }
   const float alpha = 1.f, beta = 0.f;
   RL_CUBLAS_CHECK(cublasLtMatmul(handle_, p.desc, &alpha, w, p.a, x, p.b, &beta, y, p.c, y, p.c,
                                  &p.algo, workspace_.get(), workspace_.bytes(), stream));
+  if (bias != nullptr && y_fp32) kernels::add_bias_f32(static_cast<float*>(y), bias, m, n, ldy, stream);
 }
 
 void CublasLtGemm::gemm_int8(const int8_t* x, const int8_t* w, int32_t* y, int m, int n, int k,

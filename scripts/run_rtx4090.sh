@@ -6,7 +6,8 @@
 #
 # Usage:  scripts/run_rtx4090.sh                 # full suite (several hours)
 #         QUICK=1 scripts/run_rtx4090.sh         # small grid smoke run
-# Env:    MODEL, DRAFT, OUT, BUILD, SKIP_VLLM=1, SKIP_HF=1, CUTLASS=1, EVAL_LIMIT
+# Env:    MODEL, DRAFT, OUT, BUILD, SKIP_VLLM=1, SKIP_HF=1, CUTLASS=1, EVAL_LIMIT,
+#         VLLM_PYTHON (interpreter of a separate vLLM venv)
 set -euo pipefail
 
 MODEL=${MODEL:-meta-llama/Llama-3.1-8B-Instruct}
@@ -42,7 +43,7 @@ python -m redline.workloads suite --tokenizer "$MODEL" --out-dir "$OUT/workloads
 echo "== 4. benchmarks"
 BASELINES=()
 [ "${SKIP_HF:-0}" = 1 ] || BASELINES+=(--hf "$MODEL")
-[ "${SKIP_VLLM:-0}" = 1 ] || BASELINES+=(--vllm "$MODEL")
+[ "${SKIP_VLLM:-0}" = 1 ] || BASELINES+=(--vllm "$MODEL" --vllm-python "${VLLM_PYTHON:-python}")
 M="$OUT/models"
 python -m redline.suite --workloads "$OUT/workloads" --out "$OUT/results" \
   --redline "fp16=$M/target-fp16.rlm" \

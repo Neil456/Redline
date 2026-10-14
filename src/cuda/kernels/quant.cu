@@ -46,6 +46,12 @@ __global__ void scale_columns_kernel(half* y, const half* col_scales, float mult
   y[row * cols + c] = __float2half_rn(v);
 }
 
+__global__ void add_bias_f32_kernel(float* y, const half* bias, int cols, int ldy) {
+  const size_t row = blockIdx.y;
+  const int c = blockIdx.x * blockDim.x + threadIdx.x;
+  if (c < cols) y[row * ldy + c] += __half2float(bias[c]);
+}
+
 __global__ void dequant_w8_kernel(const int8_t* w, const half* scales, int k, int row_begin,
                                   half* out) {
   const int r = blockIdx.y;
@@ -108,6 +114,12 @@ void scale_columns(half* y, const half* col_scales, float multiplier, const half
   if (rows <= 0) return;
   scale_columns_kernel<<<dim3((cols + 255) / 256, rows), 256, 0, stream>>>(y, col_scales, multiplier,
                                                                            bias, cols);
+  RL_CUDA_CHECK_LAUNCH();
+}
+
+void add_bias_f32(float* y, const half* bias, int rows, int cols, int ldy, cudaStream_t stream) {
+  if (rows <= 0) return;
+  add_bias_f32_kernel<<<dim3((cols + 255) / 256, rows), 256, 0, stream>>>(y, bias, cols, ldy);
   RL_CUDA_CHECK_LAUNCH();
 }
 
