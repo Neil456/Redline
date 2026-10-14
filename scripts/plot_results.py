@@ -133,19 +133,23 @@ def sweep_chart(path, theme, sweep):
                   "(higher is better)", 12, "text2")
     series = [  # tag, label, color, dash
         ("redline_int4", "Redline INT4", "orange", None),
+        ("redline_int4_gemv", "Redline INT4, GEMV only", "muted", "1 4"),
         ("redline_int8", "Redline INT8", "aqua", None),
         ("redline_fp16", "Redline FP16", "blue", None),
         ("vllm_awq_int4", "vLLM AWQ INT4", "orange", "6 4"),
         ("vllm", "vLLM FP16", "blue", "6 4"),
         ("hf_fp16", "HF Transformers FP16", "neutral", "2 4"),
     ]
-    lx = 0
+    series = [x for x in series if x[0] in sweep]
+    lx, ly = 0, 64
     for tag, label, color, dash in series:
-        lx = legend_key(s, lx, 64, color, label, "line", dash)
+        if lx > W - 190:  # wrap the legend
+            lx, ly = 0, ly + 20
+        lx = legend_key(s, lx, ly, color, label, "line", dash)
     batches = [1, 2, 4, 8, 16, 32]
     data = {tag: [report.decode_tps(sweep[tag][f"sweep_b{b}_in512_out256"]) for b in batches]
             for tag, *_ in series}
-    l, r, top, bottom = 52, 150, 88, H - 42
+    l, r, top, bottom = 52, 150, ly + 24, H - 42
     ticks = nice_ticks(max(max(v) for v in data.values()))
     sx = lambda i: l + i / (len(batches) - 1) * (W - l - r)  # noqa: E731
     sy = lambda v: bottom - v / ticks[-1] * (bottom - top)  # noqa: E731
@@ -177,7 +181,7 @@ def sweep_chart(path, theme, sweep):
     s.text(xe, yr + 19 if yr < ya else yr - 12, "tensor-core W4A16", 11.5, "text2")
     # Where Redline INT4 leads every system (and by how much over vLLM AWQ): the upper-left of the
     # plot is empty, so the note sits there with a leader line down to the batch-2 point.
-    others = [tag for tag, *_ in series if tag != "redline_int4"]
+    others = [tag for tag, *_ in series if not tag.startswith("redline_int4")]
     lead = [i for i in range(len(batches)) if data["redline_int4"][i] >= max(data[o][i] for o in others)]
     if lead and lead[0] == 0:
         n = 0
@@ -221,8 +225,12 @@ def main(argv=None) -> None:
     with open(os.path.join(args.results, "quality.json")) as f:
         q = json.load(f)
     ret = {os.path.basename(c["model"]): c["retention"]["mean"] for c in q["candidates"]}
+    # INT4 quality is the AWQ + GPTQ calibrated file: same format and size as round-to-nearest.
+    q4 = ret.get("l8b-int4-awq_gptq.rlm", ret["l8b-int4.rlm"])
     quality = {"hf_fp16": "reference", "redline_int8": f"{ret['l8b-int8.rlm'] * 100:.1f}%",
-               "redline_int4": f"{ret['l8b-int4.rlm'] * 100:.1f}%"}
+               "redline_int4": f"{q4 * 100:.1f}%"}
+    q4_note = (f" INT4: AWQ + GPTQ ({ret['l8b-int4.rlm'] * 100:.1f}% without calibration)."
+               if "l8b-int4-awq_gptq.rlm" in ret else "")
     rows3 = [(label, report.peak_gib(quick[tag][w8]), "blue" if tag.startswith("redline") else "neutral",
               f"{report.peak_gib(quick[tag][w8]):.1f}") for label, tag in mem]
     col3 = ("quality", [quality.get(tag, "–") for _, tag in mem])
@@ -234,7 +242,7 @@ def main(argv=None) -> None:
                    min_rows=len(rows1))
         hbar_chart(os.path.join(args.out, f"memory_quality-{theme}.svg"), theme, "Peak GPU memory and quality",
                    "Batch 8, 1024-token prompts · GiB (lower is better)", rows3, "GiB",
-                   "Quality: mean retention on WikiText-2, HellaSwag, ARC-E/C.", extra_col=col3,
+                   "Quality: mean retention on WikiText-2, HellaSwag, ARC-E/C." + q4_note, extra_col=col3,
                    min_rows=len(rows1))
         sweep_chart(os.path.join(args.out, f"batch_sweep-{theme}.svg"), theme, sweep)
     print(f"wrote {len(os.listdir(args.out))} files to {os.path.relpath(args.out, ROOT)}")

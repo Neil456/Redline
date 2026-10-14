@@ -184,6 +184,9 @@ struct W4TcWorkspace {
 };
 int w4a16_tc_splits(int n, int k, int group_size);
 size_t w4a16_tc_workspace_floats(int max_m, int n, int k, int group_size);
+// Bounds over every shape with n <= max_n (for a workspace shared by all layers).
+size_t w4a16_tc_max_workspace_floats(int max_m, int max_n);
+int w4a16_tc_max_tickets(int max_n);
 void gemm_w4a16_tc(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
                    int group_size, const half* bias, int n, int k, void* y, bool y_fp32,
                    bool silu_mul, const W4TcWorkspace& ws, cudaStream_t stream);

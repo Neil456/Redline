@@ -342,23 +342,36 @@ __global__ void dequant_w4_tc_kernel(const uint4* __restrict__ w, const uint4* _
 
 }  // namespace
 
-// CTAs per SM the K split aims for (REDLINE_W4TC_CTAS_PER_SM overrides it for tuning).
-int ctas_per_sm() {
-  static int v = [] {
+// CTAs per SM the K split aims for (REDLINE_W4TC_CTAS_PER_SM overrides it for tuning). One is
+// best on the RTX 4090 at every batch size: fewer splits under-fill the GPU, more spend longer in
+// the reduction than they gain in memory parallelism.
+double ctas_per_sm() {
+  static double v = [] {
     const char* e = std::getenv("REDLINE_W4TC_CTAS_PER_SM");
-    return e != nullptr && std::atoi(e) > 0 ? std::atoi(e) : 2;
+    return e != nullptr && std::atof(e) > 0 ? std::atof(e) : 1.0;
   }();
   return v;
 }
 
+int target_ctas() { return std::max(1, static_cast<int>(ctas_per_sm() * num_sms() + 0.5)); }
+
 int w4a16_tc_splits(int n, int k, int group_size) {
   const int ctas = static_cast<int>(ceil_div(n, kTcCtaCols));
   const int groups = k / group_size;
-  const int target = ctas_per_sm() * num_sms();
+  const int target = target_ctas();
   int splits = std::max(1, std::min(groups, static_cast<int>(ceil_div(target, ctas))));
   const int groups_per_split = static_cast<int>(ceil_div(groups, splits));
   return static_cast<int>(ceil_div(groups, groups_per_split));
 }
+
+size_t w4a16_tc_max_workspace_floats(int max_m, int max_n) {
+  // splits <= ceil(target / ctas) and ctas = ceil(n / kTcCtaCols), so splits * n is at most
+  // (target / ctas + 1) * n <= target * kTcCtaCols + n.
+  const int target = target_ctas();
+  return static_cast<size_t>(max_m) * (static_cast<size_t>(target) * kTcCtaCols + max_n);
+}
+
+int w4a16_tc_max_tickets(int max_n) { return static_cast<int>(ceil_div(max_n, kTcCtaCols)); }
 
 size_t w4a16_tc_workspace_floats(int max_m, int n, int k, int group_size) {
   const int splits = w4a16_tc_splits(n, k, group_size);

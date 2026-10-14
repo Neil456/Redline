@@ -66,17 +66,11 @@ LinearExecutor::LinearExecutor(const LinearOptions& opts, MemoryLedger* ledger)
 
   dequant_scratch_ = ledger->alloc("workspace", opts_.dequant_scratch);
   if (opts_.int4_tensor_cores) {
-    // Split-K partials: splits * n <= target CTAs * 256 + n for every layer (see
-    // kernels::w4a16_tc_splits), so this bounds every INT4 GEMM up to max_n columns.
-    int sms = 0, dev = 0;
-    RL_CUDA_CHECK(cudaGetDevice(&dev));
-    RL_CUDA_CHECK(cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev));
-    const size_t max_n = static_cast<size_t>(std::max(opts_.max_n, 256));
-    const char* e = std::getenv("REDLINE_W4TC_CTAS_PER_SM");
-    const size_t per_sm = static_cast<size_t>(std::max(2, e != nullptr ? std::atoi(e) : 2));
-    const size_t floats = static_cast<size_t>(kernels::kW4TcMaxM) * (per_sm * sms * 256u + max_n);
-    tc_partials_ = ledger->alloc("workspace", floats * sizeof(float));
-    const size_t tickets = max_n / 256 + 64;
+    // One split-K workspace serves every INT4 layer (each GEMM finishes before the next starts).
+    const int max_n = std::max(opts_.max_n, 64);
+    tc_partials_ = ledger->alloc(
+        "workspace", kernels::w4a16_tc_max_workspace_floats(kernels::kW4TcMaxM, max_n) * sizeof(float));
+    const size_t tickets = kernels::w4a16_tc_max_tickets(max_n);
     tc_tickets_ = ledger->alloc("workspace", tickets * sizeof(int));
     RL_CUDA_CHECK(cudaMemset(tc_tickets_.get(), 0, tc_tickets_.bytes()));
   }
