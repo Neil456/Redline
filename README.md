@@ -80,12 +80,14 @@ any GQA ratio up to 8.
 | **Reusable device buffers** | `MemoryLedger`, `LlamaModel` | Every buffer is allocated at init and accounted for by category; nothing is allocated on the decode path. Activation buffers are aliased across layer phases |
 | **CUDA graphs** | `Engine::capture_graphs` | Decode graphs per batch-size bucket (padding writes to a scratch KV block). Draft-model rounds are captured per (bucket, round) |
 | **Attention kernels** | `src/cuda/kernels/attention.cu` | Paged decode attention with flash-decoding split-K. All query heads of a GQA group share each K/V load, which cuts KV-cache traffic by the group factor. Tiled causal prefill attention over the paged cache with online softmax |
-| **Weight-only quantized GEMV** | `src/cuda/kernels/gemv_weight_only.cu` | W8A16 (per-channel) and W4A16 (group-wise, asymmetric) decode kernels: 16-byte weight loads, dequantized in registers, fp32 accumulate. Chunked for batches up to 32 |
+| **Weight-only quantized GEMV** | `src/cuda/kernels/gemv_weight_only.cu` | W8A16 (per-channel) and W4A16 (group-wise, asymmetric) decode kernels: 16-byte weight loads, dequantized in registers, fp32 accumulate. Chunked for batches up to 32. The INT4 gate/up projection has a fused SwiGLU output mode: gate and up rows are interleaved at load time, so the batch-1 MLP never writes the 2×-wide intermediate |
+| **Tensor-core INT4 GEMM** | `src/cuda/kernels/gemm_w4a16_tc.cu`, `src/core/int4_layout.*` | W4A16 on `mma.sync.m16n8k16` for 1–64 rows. Weights are re-laid out at load so each lane's 16-byte load is exactly its B fragments for eight n8 tiles. Nibbles become fp16 with one `lop3` plus the `0x6400` exponent trick, then one `hfma2` applies the group scale and offset. Software-pipelined weight prefetch. Deterministic split-K (the last CTA reduces in a fixed order), with a split count that depends only on the shape, so results are batch-invariant. The epilogue writes fp16, fp32 or fused SwiGLU. `--int4-kernel auto` uses the GEMV for ≤4 rows and tensor cores above |
 | **Quantized GEMM backends** | `src/cuda/gemm/` | cuBLASLt FP16 (cached heuristics, bias epilogue), cuBLASLt **INT8 W8A8** (dynamic per-token activation quantization), **CUTLASS** FP16×INT8 mixed-input tensor-core GEMM, **TensorRT-LLM** `CutlassFpAIntBGemmRunner` (INT4/INT8 fine-grained) with weight re-layout and per-shape config profiling, plus a dequantize-then-cuBLASLt fallback |
 | **Sampling** | `src/cuda/kernels/sampling.cu` | Greedy, temperature, top-k, top-p. Exact radix-select thresholds instead of a vocabulary sort, then a Gumbel-max draw with a Philox RNG keyed by (seed, position), so results don't depend on batching |
 | **Speculative decoding** | `Engine::run_spec_step`, `speculative_verify` | Draft model proposes *k* tokens and the target verifies them in one pass. Rejection sampling on the GPU is lossless (exact for greedy). Reports acceptance rate |
 | **Benchmark harness** | `src/cuda/bench/harness.*`, `apps/redline_bench.cpp` | TTFT, inter-token latency, TPOT, E2E, decode / prefill / output throughput, per-step GPU time (CUDA events), host overhead, peak VRAM, acceptance rate. NVTX ranges for Nsight Systems; `--trace-out` writes a step-by-step trace for the demo |
-| **Conversion & quantization** | `python/redline/convert.py`, `quantize.py` | Streams HF checkpoints into one `.rlm` (safetensors) file. INT8 per-channel / INT4 group-wise quantization with MSE clip search |
+| **Conversion & quantization** | `python/redline/convert.py`, `quantize.py`, `calibrate.py` | Streams HF checkpoints into one `.rlm` (safetensors) file. INT8 per-channel / INT4 group-wise quantization with MSE clip search. Calibrated INT4 (`--method awq\|gptq\|awq_gptq`) quantizes layer by layer on C4 samples, feeding each layer's quantized output into the next. **AWQ** searches per-channel activation-aware scales and folds them into the preceding RMSNorm or projection. **GPTQ** quantizes column by column and pushes the rounding error onto the remaining columns through the inverse Hessian |
+| **Per-op profiler** | `src/cuda/op_profiler.h`, `redline_bench --profile-ops` | CUDA-event marks between the ops of each forward pass. Reports ms per pass and share of GPU time per op (embed, QKV, RoPE+KV write, attention, O, norms, gate/up+SwiGLU, down, lm_head, sampling) |
 | **Baselines & evaluation** | `python/redline/baselines/`, `eval_quality.py`, `workloads.py`, `suite.py`, `report.py` | Same workloads through HF Transformers and vLLM. Quality retention (perplexity + multiple-choice) vs FP16 HF. Reproducible workload grid (~150 workloads) |
 
 ## Results
@@ -145,6 +147,7 @@ pip install -e .                         # python tooling (convert, workloads, b
 # 1. Convert (FP16 / INT8 / INT4; quantization runs on GPU if available)
 python -m redline.convert --model meta-llama/Llama-3.1-8B-Instruct --out llama-int4.rlm \
        --weights int4 --group-size 128 --lm-head int8
+#    calibrated INT4 (a few minutes on one GPU): --method awq | gptq | awq_gptq [--calib-dataset c4]
 
 # 2. Generate text (tokenization via the HF tokenizer recorded in the file)
 python -m redline.generate --model llama-int4.rlm --chat --prompt "Explain paged attention briefly."
@@ -183,10 +186,11 @@ print(eng.memory_report())
 | `--kv-cache-tokens N` / `--gpu-memory-utilization F` | KV capacity: explicit (capped by the budget) or derived from free memory |
 | `--kv-dtype fp16\|int8` | KV-cache precision |
 | `--int8-gemm auto\|cutlass\|w8a8\|dequant\|trtllm`, `--int4-gemm auto\|dequant\|trtllm` | GEMM backend for batched (non-GEMV) quantized linears |
+| `--int4-kernel auto\|tc\|gemv` | INT4 decode kernel: `auto` = GEMV when a step has ≤4 rows, tensor cores above; `gemv` = CUDA-core GEMV up to `--gemv-max-m` rows, then dequantize + cuBLASLt |
 | `--gemv-max-m N` | rows served by the weight-only GEMV kernels (default 8) |
 | `--draft-model PATH --spec-tokens K` | speculative decoding |
 | `--no-cuda-graphs`, `--no-async`, `--no-mixed-batches` | ablations |
-| `--nvtx-layers`, `--track-memory` | profiling aids |
+| `--nvtx-layers`, `--track-memory`, `--profile-ops` | profiling aids (`--profile-ops` prints a per-op GPU time table; it runs without graphs) |
 
 ## Benchmark methodology
 
@@ -218,8 +222,8 @@ print(eng.memory_report())
 | Suite | Runs where | What it checks |
 |---|---|---|
 | `build/redline_core_tests` | anywhere | JSON, safetensors, fp16 conversion, RoPE scaling, block allocator, scheduler (async pending tokens, chunked prefill, preemption, lookahead), batch metadata layout, quantizers, CPU reference model |
-| `pytest tests/python` | anywhere (CPU torch) | Exporter → `.rlm` → C++ reference reproduces HF Transformers logits (Llama, tied embeddings, Qwen2 biases, llama3 RoPE scaling) and dequantized-HF logits for INT8/INT4. Also covers workload reproducibility, metrics, report math and the suite runner |
-| `build/redline_cuda_tests` | NVIDIA GPU | Kernels vs CPU (RMSNorm, SwiGLU, RoPE + paged KV write, decode/prefill/chunked attention for FP16/INT8 KV across head dims and GQA ratios, GEMV, cuBLASLt, every LinearExecutor path). Sampling distributions vs exact warped distributions, lossless speculative verification. End-to-end engine vs the CPU reference in every mode (graphs/async/mixed, quantized weights, INT8 KV, preemption, speculative decoding, harness report) |
+| `pytest tests/python` | anywhere (CPU torch) | Exporter → `.rlm` → C++ reference reproduces HF Transformers logits (Llama, tied embeddings, Qwen2 biases, llama3 RoPE scaling) and dequantized-HF logits for INT8/INT4 and for AWQ/GPTQ-calibrated INT4 (GPTQ beats round-to-nearest on output error, AWQ's scale folding is exact). Also covers workload reproducibility, metrics, report math and the suite runner |
+| `build/redline_cuda_tests` | NVIDIA GPU | Kernels vs CPU (RMSNorm, SwiGLU, RoPE + paged KV write, decode/prefill/chunked attention for FP16/INT8 KV across head dims and GQA ratios, GEMV incl. fused SwiGLU, tensor-core INT4 GEMM incl. split-K and the fused epilogue, cuBLASLt, every LinearExecutor path). Sampling distributions vs exact warped distributions, lossless speculative verification. End-to-end engine vs the CPU reference in every mode (graphs/async/mixed, quantized weights, INT8 KV, preemption, speculative decoding, harness report, per-op profile, GEMV and tensor-core INT4 kernels agreeing) |
 
 ## Layout
 
@@ -229,7 +233,7 @@ src/cpu/       fp32 CPU reference model + random model generator (test oracle)
 src/cuda/      kernels/, gemm/ (cuBLASLt, CUTLASS, TRT-LLM, dispatcher), model/ (weights, KV cache, Llama),
                engine/ (engine, device batch), bench/ (harness)
 apps/          redline_generate, redline_bench, redline_ref (CPU reference CLI)
-python/redline convert, quantize, format, runtime, generate, workloads, suite, baselines/, eval_quality, report
+python/redline convert, quantize, calibrate, format, runtime, generate, workloads, suite, baselines/, eval_quality, report
 tests/         cpp/ (host), cuda/ (GPU), python/
 scripts/       run_rtx4090.sh
 demo/          interactive tour (template.html + build_demo.py -> index.html)

@@ -40,9 +40,10 @@ EXCERPTS = {
     "capture": ("src/cuda/engine/engine.cpp", r"cudaGraphExec_t Engine::capture\(", 15,
                 "Graph capture: one eager warm-up (lazy loading, cuBLASLt plans) then capture the whole "
                 "forward + sampling."),
-    "forward": ("src/cuda/model/llama.cpp", r"for \(int l = 0; l < c\.num_layers; \+\+l\) \{", 21,
+    "forward": ("src/cuda/model/llama.cpp", r"for \(int l = 0; l < c\.num_layers; \+\+l\) \{", 28,
                 "One decoder layer: fused-QKV GEMM, RoPE + paged KV write, attention, O projection, "
-                "fused residual RMSNorm, SwiGLU MLP."),
+                "fused residual RMSNorm, gate/up GEMM with SwiGLU in its epilogue, down projection. mark() feeds the "
+                "per-op profiler."),
     "rope_kv": ("src/cuda/kernels/rope_kv.cu", r"if \(slot < 0\) continue;", 26,
                 "RoPE is fused with the KV-cache write; INT8 KV stores one absmax scale per (token, head)."),
     "attn_decode": ("src/cuda/kernels/attention.cu", r"// Phase 1: scores\. One thread per key", 23,
@@ -51,9 +52,16 @@ EXCERPTS = {
     "gemv_w4": ("src/cuda/kernels/gemv_weight_only.cu", r"for \(int kk = lane \* 32; kk < k; kk \+= 32 \* 32\) \{", 46,
                 "W4A16 GEMV: one 16-byte load brings 32 weights, each unpacked once and reused for every "
                 "activation row; y = s * sum(x*q) + o * sum(x) applies the group scale and offset once per 32 values."),
+    "gemm_tc": ("src/cuda/kernels/gemm_w4a16_tc.cu", r"// Software pipeline: the next chunk's weights", 59,
+                "Tensor-core W4A16 main loop: the next chunk's INT4 weights load while this chunk computes; each "
+                "16-byte load is a lane's B fragments for eight n8 tiles, dequantized with one hfma2 and fed "
+                "to mma.sync.m16n8k16 for up to 64 rows."),
+    "dequant_tc": ("src/cuda/kernels/gemm_w4a16_tc.cu", r"// 8 nibbles -> 4 half2", 12,
+                   "INT4 -> fp16 without conversions: lop3 drops each nibble into the mantissa of 1024.0 "
+                   "(0x6400), then one subtract (or a multiply-add for the high nibble) leaves the exact value."),
     "linear_dispatch": ("src/cuda/gemm/linear.cpp", r"void LinearExecutor::forward\(", 45,
-                        "The GEMM dispatcher: GEMV for decode, CUTLASS / cuBLASLt W8A8 / TensorRT-LLM / "
-                        "dequant+cuBLASLt for larger batches."),
+                        "The GEMM dispatcher: GEMV for decode, tensor-core INT4 up to 64 rows, CUTLASS / "
+                        "cuBLASLt W8A8 / TensorRT-LLM / dequant+cuBLASLt for larger batches."),
     "sampling": ("src/cuda/kernels/sampling.cu", r"__device__ uint32_t radix_select_topk\(", 30,
                  "Top-k without sorting the vocabulary: 4 radix passes over order-preserving float keys find "
                  "the exact k-th largest logit."),
@@ -72,6 +80,12 @@ EXCERPTS = {
     "quant_int4": ("python/redline/quantize.py", r"def quantize_int4\(", 41,
                    "INT4 export: asymmetric groups of 128 with a per-group clipping search that minimizes "
                    "reconstruction error."),
+    "gptq": ("python/redline/calibrate.py", r"    for i1 in range\(0, k, blocksize\):", 23,
+             "GPTQ: quantize one column at a time and push its rounding error onto the columns not yet "
+             "quantized, weighted by the inverse Hessian of the layer's calibration inputs."),
+    "awq": ("python/redline/calibrate.py", r"def awq_search\(", 16,
+            "AWQ: scale input channels by mean|x|^alpha before quantizing (and fold 1/s into the previous op), "
+            "choosing alpha by the layer's output error on calibration activations."),
     "pinned_upload": ("src/cuda/model/weights.cpp", r"void upload\(void\* dst, const void\* src, size_t bytes\) \{", 15,
                       "Weight loading streams through two pinned staging buffers, so the host memcpy overlaps "
                       "the previous chunk's DMA."),

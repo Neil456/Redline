@@ -164,22 +164,34 @@ def sweep_chart(path, theme, sweep):
             for i, v in enumerate(data[tag]):
                 s.add(f'<circle cx="{sx(i):.1f}" cy="{sy(v):.1f}" r="4" fill="{t[color]}" stroke="{t["surface"]}" '
                       f'stroke-width="2"/>')
-    # Selective end labels: the two INT4 systems, whose story is the crossover.
+    # Selective end labels: the two INT4 systems, nudged apart when their batch-32 values are close.
     xe = sx(len(batches) - 1) + 10
-    v = data["vllm_awq_int4"][-1]
-    s.text(xe, sy(v) + 4, f"vLLM AWQ INT4 {v:,.0f}", 12, "text", 600, tabular=True)
-    s.text(xe, sy(v) + 19, "tensor-core GEMM", 11.5, "text2")
-    v = data["redline_int4"][-1]
-    s.text(xe, sy(v) + 4, f"Redline INT4 {v:,.0f}", 12, "text", 600, tabular=True)
-    s.text(xe, sy(v) + 19, "CUDA-core GEMV,", 11.5, "text2")
-    s.text(xe, sy(v) + 33, "saturates past batch 8", 11.5, "text2")
-    # Where Redline leads: batch 1-4 for INT4. The upper-left of the plot is empty, so the note
-    # sits there with a leader line down to the batch-2 point.
-    i = 1
-    ya = sy(ticks[-1] * 0.78)
-    s.line(sx(i), ya + 8, sx(i), sy(data["redline_int4"][i]) - 8, "axis")
-    s.text(sx(0) + 12, ya - 14, "Batch 1–4: Redline INT4 is the fastest system", 12, "text", 600)
-    s.text(sx(0) + 12, ya + 1, "3–4% ahead of vLLM's Marlin kernel", 12, "text2")
+    va, vr = data["vllm_awq_int4"][-1], data["redline_int4"][-1]
+    ya, yr = sy(va), sy(vr)
+    if abs(ya - yr) < 40:
+        mid = (ya + yr) / 2
+        ya, yr = (mid - 20, mid + 20) if va >= vr else (mid + 20, mid - 20)
+    s.text(xe, ya + 4, f"vLLM AWQ INT4 {va:,.0f}", 12, "text", 600, tabular=True)
+    s.text(xe, ya + 19 if ya < yr else ya - 12, "Marlin tensor cores", 11.5, "text2")
+    s.text(xe, yr + 4, f"Redline INT4 {vr:,.0f}", 12, "text", 600, tabular=True)
+    s.text(xe, yr + 19 if yr < ya else yr - 12, "tensor-core W4A16", 11.5, "text2")
+    # Where Redline INT4 leads every system (and by how much over vLLM AWQ): the upper-left of the
+    # plot is empty, so the note sits there with a leader line down to the batch-2 point.
+    others = [tag for tag, *_ in series if tag != "redline_int4"]
+    lead = [i for i in range(len(batches)) if data["redline_int4"][i] >= max(data[o][i] for o in others)]
+    if lead and lead[0] == 0:
+        n = 0
+        while n + 1 < len(lead) and lead[n + 1] == n + 1:
+            n += 1
+        gains = [data["redline_int4"][i] / data["vllm_awq_int4"][i] - 1 for i in range(n + 1)]
+        i = min(1, n)
+        yt = sy(ticks[-1] * 0.78)
+        s.line(sx(i), yt + 8, sx(i), sy(data["redline_int4"][i]) - 8, "axis")
+        span = f"Batch 1–{batches[n]}" if n else "Batch 1"
+        s.text(sx(0) + 12, yt - 14, f"{span}: Redline INT4 is the fastest system", 12, "text", 600)
+        lo, hi = round(min(gains) * 100), round(max(gains) * 100)
+        s.text(sx(0) + 12, yt + 1, f"{lo}–{hi}% ahead of vLLM's Marlin kernel" if lo != hi
+               else f"{lo}% ahead of vLLM's Marlin kernel", 12, "text2")
     s.save(path)
 
 

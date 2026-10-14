@@ -111,13 +111,16 @@ numbers match the source.
 | Transformer layer | `src/cuda/model/llama.cpp` | `forward()` layer loop |
 | Attention | `src/cuda/kernels/attention.cu` | `decode_attention_kernel` (GQA, split-K), `prefill_attention_kernel` (tiled, online softmax) |
 | RoPE + KV write | `src/cuda/kernels/rope_kv.cu` | INT8 KV quantization per (token, head) |
-| Quantized GEMV | `src/cuda/kernels/gemv_weight_only.cu` | `gemv_w4a16_kernel` |
-| GEMM dispatch | `src/cuda/gemm/linear.cpp` | GEMV vs CUTLASS vs cuBLASLt W8A8 vs TensorRT-LLM vs dequant |
+| Quantized GEMV | `src/cuda/kernels/gemv_weight_only.cu` | `gemv_w4a16_kernel`, `store_swiglu` (fused SwiGLU output) |
+| Tensor-core INT4 GEMM | `src/cuda/kernels/gemm_w4a16_tc.cu`, `src/core/int4_layout.cpp` | `dequant_word` (lop3 + `0x6400` trick), `mma_16816`, the split-K last-CTA reduction; the load-time re-layout that makes one 16-byte load = eight B fragments |
+| GEMM dispatch | `src/cuda/gemm/linear.cpp` | GEMV vs tensor-core INT4 vs CUTLASS vs cuBLASLt W8A8 vs TensorRT-LLM vs dequant; `forward_gated` picks the fused SwiGLU path |
 | CUTLASS backend | `src/cuda/gemm/cutlass_gemm.cu` | mixed-input FP16×INT8 tensor-core GEMM |
 | TensorRT-LLM backend | `src/cuda/gemm/trtllm_gemm.cpp` | weight re-layout + per-shape config profiling |
 | Sampling | `src/cuda/kernels/sampling.cu` | `radix_select_topk`, `gumbel_sample`, `speculative_verify_kernel` |
 | Benchmark harness | `src/cuda/bench/harness.cpp` | metric definitions, `write_trace` |
 | Quantizer | `python/redline/quantize.py` | INT4 groups with clip search |
+| AWQ / GPTQ | `python/redline/calibrate.py` | `awq_search` + scale folding, `gptq_quantize` (inverse-Hessian error feedback), the layer-by-layer loop |
+| Per-op profiler | `src/cuda/op_profiler.h`, `LlamaModel::forward` | CUDA-event `mark()` calls between ops |
 | Exporter | `python/redline/convert.py` | streaming HF → `.rlm` conversion |
 | Tests | `tests/python/test_convert.py`, `tests/cuda/` | exporter vs HF logits; kernels and engine vs the CPU reference |
 | Measured results | `results/rtx4090/README.md` | methodology, batch sweep, quality, what the numbers say |
