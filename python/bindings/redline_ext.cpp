@@ -15,7 +15,11 @@ namespace {
 
 EngineConfig config_from_dict(const py::dict& d) {
   EngineConfig c;
-  auto get = [&](const char* k) -> py::object { return d.contains(k) ? d[k] : py::none(); };
+  // Both ternary arms must be py::object: with a bare py::none() arm the result type is py::none
+  // and every present value fails the cast.
+  auto get = [&](const char* k) -> py::object {
+    return d.contains(k) ? py::object(d[k]) : py::object(py::none());
+  };
   c.model_path = d["model"].cast<std::string>();
   if (!get("draft_model").is_none()) c.draft_model_path = get("draft_model").cast<std::string>();
   if (!get("spec_tokens").is_none()) c.num_speculative_tokens = get("spec_tokens").cast<int>();
