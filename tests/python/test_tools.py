@@ -57,9 +57,10 @@ def test_metrics_summary_and_report():
     assert rep["memory"]["peak_device_used_bytes"] == 2**30
 
 
-def _fake(tag, name, itl_p50, peak_gib, batch=8):
+def _fake(tag, name, tpot_p50, peak_gib, batch=8):
     return {"tag": tag, "workload": name, "workload_settings": {"kind": "offline", "batch_size": batch},
-            "ttft_ms": metrics.summarize([10.0]), "itl_ms": {**metrics.summarize([itl_p50]), "p50": itl_p50},
+            "ttft_ms": metrics.summarize([10.0]), "itl_ms": metrics.summarize([tpot_p50]),
+            "tpot_ms": {**metrics.summarize([tpot_p50]), "p50": tpot_p50},
             "memory": {"peak_device_used_bytes": int(peak_gib * 2**30)}, "decode_throughput_tok_s": 0.0}
 
 

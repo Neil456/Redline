@@ -58,7 +58,7 @@ class RedlineScorer:
 def wikitext_windows(tok, window: int, limit: int) -> list[list[int]]:
     from datasets import load_dataset
 
-    text = "\n\n".join(load_dataset("wikitext", "wikitext-2-raw-v1", split="test")["text"])
+    text = "\n\n".join(load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="test")["text"])
     ids = tok(text, add_special_tokens=False)["input_ids"]
     bos = [tok.bos_token_id] if tok.bos_token_id is not None else []
     out = []

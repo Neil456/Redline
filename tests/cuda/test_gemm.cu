@@ -83,7 +83,8 @@ std::vector<float> cpu_linear(const std::vector<float>& x, int m, const std::vec
 
 TEST(gemv_weight_only_matches_cpu) {
   for (QuantType q : {QuantType::kINT8, QuantType::kINT4}) {
-    for (int m : {1, 3, 8}) {
+    for (int m : {1, 3, 8, 13, 16}) {
+      if (q == QuantType::kINT8 && m > kernels::kGemvMaxM) continue;
       for (bool f32 : {false, true}) {
         const int n = 97, k = 512, g = 64;  // odd n exercises the row tail
         QuantLinear L = make_linear(n, k, q, g, /*bias=*/true, 100 + m);
@@ -169,7 +170,7 @@ TEST(linear_executor_all_paths) {
     MemoryLedger ledger;
     LinearExecutor exec(lo, &ledger);
     QuantLinear L = make_linear(n, k, p.q, g, true, 300);
-    for (int m : {5, 20, 100}) {  // GEMV, chunked GEMV / tensor-core path, batched GEMM
+    for (int m : {5, 20, 40, 100}) {  // GEMV, chunked GEMV / tensor-core path, batched GEMM
       auto x = round_half(randn(static_cast<size_t>(m) * k, 1.f, 400 + m));
       DeviceVec<half> dx(to_half(x)), y(static_cast<size_t>(m) * n);
       exec.forward(L.lw, dx.get(), m, y.get(), false, 0);

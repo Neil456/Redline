@@ -57,7 +57,7 @@ class Corpus:
         if source == "wikitext":
             from datasets import load_dataset
 
-            ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+            ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")
             return "\n".join(t for t in ds["text"] if t.strip())[:4_000_000]
         raise ValueError(f"unknown corpus source {source}")
 

@@ -102,17 +102,34 @@ def run_workload(model, tok, w: dict, static_cache: bool, warmup: bool = True) -
     torch.cuda.reset_peak_memory_stats()
     traces = []
     decode_tokens, decode_time = 0, 0.0
+    oom_splits = 0
+
+    def run_chunk(chunk: list[dict]) -> list[list]:
+        """Runs one static batch; on OOM, halves it (padded prefill of long prompts is the usual cause)."""
+        nonlocal oom_splits
+        try:
+            return [run_batch(model, tok, chunk, static_cache)]
+        except torch.OutOfMemoryError:
+            if len(chunk) == 1:
+                raise
+            torch.cuda.empty_cache()
+            oom_splits += 1
+            print(f"note: OOM at batch {len(chunk)}, splitting in half", file=sys.stderr)
+            h = len(chunk) // 2
+            return run_chunk(chunk[:h]) + run_chunk(chunk[h:])
+
     with DeviceMemorySampler() as mem:
         t0 = time.perf_counter()
         for i in range(0, len(reqs), bs):
-            batch_traces = run_batch(model, tok, reqs[i : i + bs], static_cache)
-            n, dt = decode_window(batch_traces)
-            decode_tokens += n
-            decode_time += dt
-            traces += batch_traces
+            for batch_traces in run_chunk(reqs[i : i + bs]):
+                n, dt = decode_window(batch_traces)
+                decode_tokens += n
+                decode_time += dt
+                traces += batch_traces
         duration = time.perf_counter() - t0
     return build_report("hf", w, traces, duration, decode_tokens, decode_time, mem.peak,
-                        {"torch_max_allocated_bytes": torch.cuda.max_memory_allocated()})
+                        {"torch_max_allocated_bytes": torch.cuda.max_memory_allocated(),
+                         "oom_batch_splits": oom_splits})
 
 
 def main(argv=None) -> None:

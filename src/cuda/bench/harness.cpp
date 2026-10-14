@@ -101,6 +101,12 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
     return (opts.online ? a->arrival_time : 0.0) < (opts.online ? b->arrival_time : 0.0);
   });
 
+  // Offline workloads run as successive static batches of the workload's batch_size (the
+  // same protocol as the HF and vLLM baselines), so TTFT counts from batch submission.
+  size_t wave = 0;
+  if (!opts.online && workload.raw_settings.is_object()) {
+    if (const Json* b = workload.raw_settings.find("batch_size")) wave = static_cast<size_t>(b->as_int());
+  }
   std::vector<RequestOutput> outputs;
   size_t next = 0;
   const double t0 = now_seconds();
@@ -108,13 +114,22 @@ Json run_benchmark(Engine& engine, const Workload& workload, const BenchOptions&
     RL_NVTX_RANGE("bench/run", kNvtxHost);
     while (next < order.size() || engine.has_unfinished()) {
       const double now = now_seconds();
-      while (next < order.size() && (!opts.online || t0 + order[next]->arrival_time <= now)) {
-        Request r = *order[next];
-        r.arrival_time = t0 + (opts.online ? r.arrival_time : 0.0);
-        engine.add_request(std::move(r));
-        ++next;
+      if (opts.online) {
+        while (next < order.size() && t0 + order[next]->arrival_time <= now) {
+          Request r = *order[next++];
+          r.arrival_time = t0 + r.arrival_time;
+          engine.add_request(std::move(r));
+        }
+      } else if (wave == 0 || !engine.has_unfinished()) {
+        const size_t end = wave == 0 ? order.size() : std::min(order.size(), next + wave);
+        while (next < end) {
+          Request r = *order[next++];
+          r.arrival_time = now;
+          engine.add_request(std::move(r));
+        }
       }
       if (!engine.has_unfinished()) {
+        if (next >= order.size()) break;
         // Idle until the next arrival.
         const double wait = t0 + order[next]->arrival_time - now_seconds();
         if (wait > 0) std::this_thread::sleep_for(std::chrono::duration<double>(wait));

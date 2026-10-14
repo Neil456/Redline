@@ -5,8 +5,10 @@
 Every report file carries a `tag` (system/config) and a `workload` name. For
 each Redline tag the report computes, over the workloads it shares with the
 baseline tag, the geometric-mean decode-throughput ratio and the mean peak
-VRAM reduction. Decode throughput is compared on an ITL basis
-(batch_size x 1000 / ITL p50) so all systems use the same definition.
+VRAM reduction. Decode throughput is compared on a TPOT basis
+(batch_size x 1000 / TPOT p50, TPOT = per-request mean time between output
+tokens) so all systems use the same definition. Per-token ITL is not used:
+speculative decoding emits tokens in bursts, which makes its ITL p50 zero.
 """
 
 from __future__ import annotations
@@ -37,9 +39,9 @@ def load_reports(root: str) -> dict:
 
 def decode_tps(rep: dict) -> float:
     s = rep.get("workload_settings") or {}
-    itl = rep["itl_ms"]["p50"]
-    if s.get("kind", "offline") == "offline" and itl > 0 and "batch_size" in s:
-        return s["batch_size"] * 1000.0 / itl
+    tpot = (rep.get("tpot_ms") or {}).get("p50", 0.0)
+    if s.get("kind", "offline") == "offline" and tpot > 0 and "batch_size" in s:
+        return s["batch_size"] * 1000.0 / tpot
     return rep.get("decode_throughput_tok_s", 0.0)
 
 
@@ -71,8 +73,8 @@ def compare(reports: dict, tag: str, baseline: str) -> dict | None:
 
 def fmt_table(reports: dict, workload: str, tags: list[str]) -> str:
     lines = [f"#### {workload}", "",
-             "| system | decode tok/s | TTFT p50 / p99 (ms) | ITL p50 / p99 (ms) | peak VRAM (GiB) | accept |",
-             "|---|---:|---:|---:|---:|---:|"]
+             "| system | decode tok/s | TTFT p50 / p99 (ms) | TPOT p50 (ms) | ITL p99 (ms) | peak VRAM (GiB) | accept |",
+             "|---|---:|---:|---:|---:|---:|---:|"]
     for t in tags:
         r = reports[t].get(workload)
         if r is None:
@@ -80,7 +82,7 @@ def fmt_table(reports: dict, workload: str, tags: list[str]) -> str:
         acc = r.get("speculative", {})
         acc_s = f"{acc.get('acceptance_rate', 0):.2f}" if acc.get("enabled") else "-"
         lines.append(f"| {t} | {decode_tps(r):.1f} | {r['ttft_ms']['p50']:.1f} / {r['ttft_ms']['p99']:.1f} | "
-                     f"{r['itl_ms']['p50']:.2f} / {r['itl_ms']['p99']:.2f} | {peak_gib(r):.2f} | {acc_s} |")
+                     f"{r['tpot_ms']['p50']:.2f} | {r['itl_ms']['p99']:.2f} | {peak_gib(r):.2f} | {acc_s} |")
     return "\n".join(lines) + "\n"
 
 

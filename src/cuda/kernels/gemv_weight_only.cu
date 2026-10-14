@@ -1,4 +1,4 @@
-// Weight-only quantized GEMV kernels for decode (M <= 8 activation rows).
+// Weight-only quantized GEMV kernels for decode (M <= 8 rows for INT8, M <= 16 for INT4).
 //
 // Decode is memory-bound: every step streams all weights once. These kernels
 // read weights with 16-byte loads, dequantize in registers and accumulate in
@@ -110,31 +110,40 @@ gemv_w4a16_kernel(const half* __restrict__ x, const uint8_t* __restrict__ w,
       s[r] = __half2float(scales[static_cast<size_t>(row) * groups + g]);
       o[r] = __half2float(offsets[static_cast<size_t>(row) * groups + g]);
     }
+    float dot[kRows][M], xsum[M];
 #pragma unroll
     for (int m = 0; m < M; ++m) {
-      const uint4* xp = reinterpret_cast<const uint4*>(x + static_cast<size_t>(m) * k + kk);
-      float xsum = 0.f;
-      float dot[kRows];
+      xsum[m] = 0.f;
 #pragma unroll
-      for (int r = 0; r < kRows; ++r) dot[r] = 0.f;
+      for (int r = 0; r < kRows; ++r) dot[r][m] = 0.f;
+    }
+    // Unpack each 8-weight word once and reuse it for every activation row, so the
+    // ALU cost per weight does not grow with M (it dominates for M > 8).
 #pragma unroll
-      for (int v = 0; v < 4; ++v) {  // 4 x 8 halves = 32 values
-        float xf[8];
-        unpack_half8(__ldg(xp + v), xf);
+    for (int v = 0; v < 4; ++v) {  // 4 x 8 nibbles = 32 values
+      float wf[kRows][8];
 #pragma unroll
-        for (int e = 0; e < 8; ++e) xsum += xf[e];
+      for (int r = 0; r < kRows; ++r) {
+        const uint32_t word = reinterpret_cast<const uint32_t*>(&packed[r])[v];
 #pragma unroll
-        for (int r = 0; r < kRows; ++r) {
-          const uint32_t word = reinterpret_cast<const uint32_t*>(&packed[r])[v];
-#pragma unroll
-          for (int e = 0; e < 8; ++e) {
-            dot[r] += xf[e] * static_cast<float>((word >> (4 * e)) & 0xF);
-          }
-        }
+        for (int e = 0; e < 8; ++e) wf[r][e] = static_cast<float>((word >> (4 * e)) & 0xF);
       }
 #pragma unroll
-      for (int r = 0; r < kRows; ++r) acc[r][m] += s[r] * dot[r] + o[r] * xsum;
+      for (int m = 0; m < M; ++m) {
+        float xf[8];
+        unpack_half8(__ldg(reinterpret_cast<const uint4*>(x + static_cast<size_t>(m) * k + kk) + v), xf);
+#pragma unroll
+        for (int e = 0; e < 8; ++e) {
+          xsum[m] += xf[e];
+#pragma unroll
+          for (int r = 0; r < kRows; ++r) dot[r][m] += xf[e] * wf[r][e];
+        }
+      }
     }
+#pragma unroll
+    for (int r = 0; r < kRows; ++r)
+#pragma unroll
+      for (int m = 0; m < M; ++m) acc[r][m] += s[r] * dot[r][m] + o[r] * xsum[m];
   }
   store_outputs<M, kOutF32>(acc, row0, n, nullptr, bias, y, lane, false);
 }
@@ -170,6 +179,8 @@ void launch_w4(const half* x, int m, const uint8_t* w, const half* scales, const
   switch (m) {
     RL_W4_CASE(1) RL_W4_CASE(2) RL_W4_CASE(3) RL_W4_CASE(4)
     RL_W4_CASE(5) RL_W4_CASE(6) RL_W4_CASE(7) RL_W4_CASE(8)
+    RL_W4_CASE(9) RL_W4_CASE(10) RL_W4_CASE(11) RL_W4_CASE(12)
+    RL_W4_CASE(13) RL_W4_CASE(14) RL_W4_CASE(15) RL_W4_CASE(16)
     default: throw Error(str_cat("gemv_w4a16: unsupported m=", m));
   }
 #undef RL_W4_CASE

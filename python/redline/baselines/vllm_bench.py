@@ -51,9 +51,16 @@ async def run_workload(engine, w: dict, sampling_cls, warmup: bool = True) -> di
     if warmup:
         await _run_request(engine, dict(w["requests"][0], max_new_tokens=8), time.perf_counter(), False,
                            sampling_cls)
+    reqs = w["requests"]
+    # Offline: successive static batches of batch_size, like redline_bench and the HF baseline,
+    # so TTFT counts from batch submission rather than including the wait for earlier batches.
+    bs = len(reqs) if online else int(w.get("settings", {}).get("batch_size", len(reqs)))
     with DeviceMemorySampler() as mem:
         t0 = time.perf_counter()
-        traces = await asyncio.gather(*[_run_request(engine, r, t0, online, sampling_cls) for r in w["requests"]])
+        traces = []
+        for i in range(0, len(reqs), max(1, bs)):
+            traces += await asyncio.gather(*[_run_request(engine, r, t0, online, sampling_cls)
+                                             for r in reqs[i : i + bs]])
         duration = time.perf_counter() - t0
     n, dt = decode_window(list(traces))
     return build_report("vllm", w, list(traces), duration, n, dt, mem.peak)
