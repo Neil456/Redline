@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    # Host-only components + Python tooling (no GPU needed).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build host targets
+        run: |
+          cmake -S . -B build -DREDLINE_BUILD_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j4
+      - name: C++ unit tests
+        run: ./build/redline_core_tests
+      - name: Python tests (exporter vs HF Transformers via the C++ reference)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers safetensors numpy pytest
+          REDLINE_BUILD_DIR=build python -m pytest tests/python -q
+
+  cuda-build:
+    # Compiles every CUDA target (kernels, CUTLASS backend, engine, GPU tests).
+    # GPU tests need a physical GPU and are not run here.
+    runs-on: ubuntu-24.04
+    container: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends git python3-pip
+          pip3 install cmake ninja
+      - name: Build (CUDA + CUTLASS)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DREDLINE_WITH_CUTLASS=ON \
+            -DCMAKE_CUDA_ARCHITECTURES="80;89"
+          cmake --build build -j4

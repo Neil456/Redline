@@ -1,0 +1,10 @@
+build*/
+runs/
+*.rlm
+*.so
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.nsys-rep
+*.qdrep
+*.sqlite

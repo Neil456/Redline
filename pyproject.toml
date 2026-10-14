@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redline"
+version = "0.1.0"
+description = "Tooling for the Redline low-latency CUDA transformer runtime: model conversion, quantization, workloads, baselines and evaluation"
+requires-python = ">=3.10"
+dependencies = ["numpy", "torch", "safetensors", "transformers>=4.40", "huggingface_hub"]
+
+[project.optional-dependencies]
+eval = ["datasets"]
+bench = ["datasets", "nvidia-ml-py", "accelerate"]
+vllm = ["vllm"]
+test = ["pytest"]
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+
+[tool.setuptools.packages.find]
+where = ["python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]

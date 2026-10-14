@@ -1,0 +1,206 @@
+// Weight-only quantized GEMV kernels for decode (M <= 8 activation rows).
+//
+// Decode is memory-bound: every step streams all weights once. These kernels
+// read weights with 16-byte loads, dequantize in registers and accumulate in
+// fp32, so INT8 halves and INT4 quarters the weight traffic of FP16.
+// Each warp computes kRows output channels for all M rows; lanes split K.
+#include "cuda/cuda_utils.h"
+#include "cuda/kernels/common.cuh"
+#include "cuda/kernels/kernels.h"
+
+namespace redline {
+namespace kernels {
+namespace {
+
+constexpr int kGemvThreads = 128;
+constexpr int kGemvWarps = kGemvThreads / 32;
+constexpr int kRows = 2;  // output channels per warp
+
+template <int M, bool kOutF32>
+__device__ __forceinline__ void store_outputs(float (&acc)[kRows][M], int row0, int n,
+                                              const half* scales, const half* bias, void* y,
+                                              int lane, bool per_channel_scale) {
+#pragma unroll
+  for (int r = 0; r < kRows; ++r)
+#pragma unroll
+    for (int m = 0; m < M; ++m) acc[r][m] = warp_reduce_sum(acc[r][m]);
+  if (lane != 0) return;
+#pragma unroll
+  for (int r = 0; r < kRows; ++r) {
+    const int row = row0 + r;
+    if (row >= n) continue;
+    const float s = per_channel_scale ? __half2float(scales[row]) : 1.f;
+    const float b = bias ? __half2float(bias[row]) : 0.f;
+#pragma unroll
+    for (int m = 0; m < M; ++m) {
+      const float v = acc[r][m] * s + b;
+      if constexpr (kOutF32) {
+        static_cast<float*>(y)[static_cast<size_t>(m) * n + row] = v;
+      } else {
+        static_cast<half*>(y)[static_cast<size_t>(m) * n + row] = __float2half_rn(v);
+      }
+    }
+  }
+}
+
+// INT8 per-channel: each lane consumes 16 consecutive k per iteration.
+template <int M, bool kOutF32>
+__global__ void __launch_bounds__(kGemvThreads)
+gemv_w8a16_kernel(const half* __restrict__ x, const int8_t* __restrict__ w,
+                  const half* __restrict__ scales, const half* __restrict__ bias, int n, int k,
+                  void* __restrict__ y) {
+  const int lane = threadIdx.x & 31;
+  const int row0 = (blockIdx.x * kGemvWarps + (threadIdx.x >> 5)) * kRows;
+  if (row0 >= n) return;
+  float acc[kRows][M];
+#pragma unroll
+  for (int r = 0; r < kRows; ++r)
+#pragma unroll
+    for (int m = 0; m < M; ++m) acc[r][m] = 0.f;
+
+  for (int kk = lane * 16; kk < k; kk += 32 * 16) {
+    float wf[kRows][16];
+#pragma unroll
+    for (int r = 0; r < kRows; ++r) {
+      const int row = min(row0 + r, n - 1);  // duplicate the last row; never stored
+      unpack_int8x16(__ldg(reinterpret_cast<const uint4*>(w + static_cast<size_t>(row) * k + kk)), wf[r]);
+    }
+#pragma unroll
+    for (int m = 0; m < M; ++m) {
+      const uint4* xp = reinterpret_cast<const uint4*>(x + static_cast<size_t>(m) * k + kk);
+      float xf[16];
+      unpack_half8(__ldg(xp), xf);
+      unpack_half8(__ldg(xp + 1), xf + 8);
+#pragma unroll
+      for (int r = 0; r < kRows; ++r)
+#pragma unroll
+        for (int e = 0; e < 16; ++e) acc[r][m] += wf[r][e] * xf[e];
+    }
+  }
+  store_outputs<M, kOutF32>(acc, row0, n, scales, bias, y, lane, true);
+}
+
+// INT4 group-wise: each lane consumes 32 consecutive k (16 bytes) per
+// iteration; the 32 values share one (scale, offset) because group_size is a
+// multiple of 32. y = s * sum(x * q) + o * sum(x).
+template <int M, bool kOutF32>
+__global__ void __launch_bounds__(kGemvThreads)
+gemv_w4a16_kernel(const half* __restrict__ x, const uint8_t* __restrict__ w,
+                  const half* __restrict__ scales, const half* __restrict__ offsets,
+                  int group_size, const half* __restrict__ bias, int n, int k,
+                  void* __restrict__ y) {
+  const int lane = threadIdx.x & 31;
+  const int row0 = (blockIdx.x * kGemvWarps + (threadIdx.x >> 5)) * kRows;
+  if (row0 >= n) return;
+  const int groups = k / group_size;
+  float acc[kRows][M];
+#pragma unroll
+  for (int r = 0; r < kRows; ++r)
+#pragma unroll
+    for (int m = 0; m < M; ++m) acc[r][m] = 0.f;
+
+  for (int kk = lane * 32; kk < k; kk += 32 * 32) {
+    const int g = kk / group_size;
+    uint4 packed[kRows];
+    float s[kRows], o[kRows];
+#pragma unroll
+    for (int r = 0; r < kRows; ++r) {
+      const int row = min(row0 + r, n - 1);
+      packed[r] = __ldg(reinterpret_cast<const uint4*>(w + static_cast<size_t>(row) * (k / 2) + kk / 2));
+      s[r] = __half2float(scales[static_cast<size_t>(row) * groups + g]);
+      o[r] = __half2float(offsets[static_cast<size_t>(row) * groups + g]);
+    }
+#pragma unroll
+    for (int m = 0; m < M; ++m) {
+      const uint4* xp = reinterpret_cast<const uint4*>(x + static_cast<size_t>(m) * k + kk);
+      float xsum = 0.f;
+      float dot[kRows];
+#pragma unroll
+      for (int r = 0; r < kRows; ++r) dot[r] = 0.f;
+#pragma unroll
+      for (int v = 0; v < 4; ++v) {  // 4 x 8 halves = 32 values
+        float xf[8];
+        unpack_half8(__ldg(xp + v), xf);
+#pragma unroll
+        for (int e = 0; e < 8; ++e) xsum += xf[e];
+#pragma unroll
+        for (int r = 0; r < kRows; ++r) {
+          const uint32_t word = reinterpret_cast<const uint32_t*>(&packed[r])[v];
+#pragma unroll
+          for (int e = 0; e < 8; ++e) {
+            dot[r] += xf[e] * static_cast<float>((word >> (4 * e)) & 0xF);
+          }
+        }
+      }
+#pragma unroll
+      for (int r = 0; r < kRows; ++r) acc[r][m] += s[r] * dot[r] + o[r] * xsum;
+    }
+  }
+  store_outputs<M, kOutF32>(acc, row0, n, nullptr, bias, y, lane, false);
+}
+
+int gemv_blocks(int n) { return (n + kGemvWarps * kRows - 1) / (kGemvWarps * kRows); }
+
+template <bool kOutF32>
+void launch_w8(const half* x, int m, const int8_t* w, const half* scales, const half* bias, int n,
+               int k, void* y, cudaStream_t s) {
+  const int blocks = gemv_blocks(n);
+#define RL_W8_CASE(MM)                                                                  \
+  case MM:                                                                              \
+    gemv_w8a16_kernel<MM, kOutF32><<<blocks, kGemvThreads, 0, s>>>(x, w, scales, bias, n, k, y); \
+    break;
+  switch (m) {
+    RL_W8_CASE(1) RL_W8_CASE(2) RL_W8_CASE(3) RL_W8_CASE(4)
+    RL_W8_CASE(5) RL_W8_CASE(6) RL_W8_CASE(7) RL_W8_CASE(8)
+    default: throw Error(str_cat("gemv_w8a16: unsupported m=", m));
+  }
+#undef RL_W8_CASE
+  RL_CUDA_CHECK_LAUNCH();
+}
+
+template <bool kOutF32>
+void launch_w4(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
+               int group_size, const half* bias, int n, int k, void* y, cudaStream_t s) {
+  const int blocks = gemv_blocks(n);
+#define RL_W4_CASE(MM)                                                                     \
+  case MM:                                                                                 \
+    gemv_w4a16_kernel<MM, kOutF32><<<blocks, kGemvThreads, 0, s>>>(x, w, scales, offsets,  \
+                                                                   group_size, bias, n, k, y); \
+    break;
+  switch (m) {
+    RL_W4_CASE(1) RL_W4_CASE(2) RL_W4_CASE(3) RL_W4_CASE(4)
+    RL_W4_CASE(5) RL_W4_CASE(6) RL_W4_CASE(7) RL_W4_CASE(8)
+    default: throw Error(str_cat("gemv_w4a16: unsupported m=", m));
+  }
+#undef RL_W4_CASE
+  RL_CUDA_CHECK_LAUNCH();
+}
+
+}  // namespace
+
+void gemv_w8a16(const half* x, int m, const int8_t* w, const half* scales, const half* bias, int n,
+                int k, void* y, bool y_fp32, cudaStream_t stream) {
+  if (m <= 0) return;
+  RL_CHECK(k % 16 == 0, "gemv_w8a16 needs K % 16 == 0, got ", k);
+  if (y_fp32) {
+    launch_w8<true>(x, m, w, scales, bias, n, k, y, stream);
+  } else {
+    launch_w8<false>(x, m, w, scales, bias, n, k, y, stream);
+  }
+}
+
+void gemv_w4a16(const half* x, int m, const uint8_t* w, const half* scales, const half* offsets,
+                int group_size, const half* bias, int n, int k, void* y, bool y_fp32,
+                cudaStream_t stream) {
+  if (m <= 0) return;
+  RL_CHECK(k % 32 == 0 && group_size % 32 == 0 && k % group_size == 0,
+           "gemv_w4a16 needs K and group_size multiples of 32");
+  if (y_fp32) {
+    launch_w4<true>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
+  } else {
+    launch_w4<false>(x, m, w, scales, offsets, group_size, bias, n, k, y, stream);
+  }
+}
+
+}  // namespace kernels
+}  // namespace redline
