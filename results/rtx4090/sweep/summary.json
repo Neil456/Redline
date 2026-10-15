@@ -16,51 +16,93 @@
     },
     "redline_fp16__vs__vllm_awq_int4": {
       "workloads": 6,
-      "decode_speedup_geomean": 0.3925898377711227,
-      "decode_speedup_min": 0.3560584770695456,
-      "decode_speedup_max": 0.48447912978615537,
+      "decode_speedup_geomean": 0.3924639288760678,
+      "decode_speedup_min": 0.3560981599149226,
+      "decode_speedup_max": 0.4849379013665722,
       "peak_vram_reduction_mean": null
     },
     "redline_int4__vs__hf_fp16": {
       "workloads": 6,
-      "decode_speedup_geomean": 2.1888391187083536,
-      "decode_speedup_min": 0.8458653558827331,
-      "decode_speedup_max": 3.4418167391568217,
-      "peak_vram_reduction_mean": 0.4413727470796836
+      "decode_speedup_geomean": 2.9675267078616008,
+      "decode_speedup_min": 2.018136939535866,
+      "decode_speedup_max": 3.506023740614642,
+      "peak_vram_reduction_mean": 0.44237481825100783
     },
     "redline_int4__vs__vllm": {
       "workloads": 6,
-      "decode_speedup_geomean": 1.765079426391162,
-      "decode_speedup_min": 0.6517747174600153,
-      "decode_speedup_max": 2.8274297450535926,
+      "decode_speedup_geomean": 2.393012942131505,
+      "decode_speedup_min": 1.5550591171675388,
+      "decode_speedup_max": 2.8801753731683,
       "peak_vram_reduction_mean": null
     },
     "redline_int4__vs__vllm_awq_int4": {
       "workloads": 6,
-      "decode_speedup_geomean": 0.7152889434007373,
-      "decode_speedup_min": 0.3352334667851751,
-      "decode_speedup_max": 1.0445703407746758,
+      "decode_speedup_geomean": 0.9694446092733668,
+      "decode_speedup_min": 0.8005856794077557,
+      "decode_speedup_max": 1.0610171170920863,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_gemv__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 2.2371369635992755,
+      "decode_speedup_min": 0.8719347643601635,
+      "decode_speedup_max": 3.5051615472769955,
+      "peak_vram_reduction_mean": 0.4417093666880065
+    },
+    "redline_int4_gemv__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 1.8040267988258727,
+      "decode_speedup_min": 0.6718622895854807,
+      "decode_speedup_max": 2.879467087029438,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_gemv__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.7308376918131695,
+      "decode_speedup_min": 0.3458925269387633,
+      "decode_speedup_max": 1.0607561941899142,
       "peak_vram_reduction_mean": null
     },
     "redline_int4_spec__vs__hf_fp16": {
       "workloads": 6,
-      "decode_speedup_geomean": 3.1122343412180573,
-      "decode_speedup_min": 1.4779539942081963,
-      "decode_speedup_max": 6.828529959538452,
-      "peak_vram_reduction_mean": 0.29774838086192396
+      "decode_speedup_geomean": 3.406081541930477,
+      "decode_speedup_min": 1.179401007857074,
+      "decode_speedup_max": 6.6146627592203675,
+      "peak_vram_reduction_mean": 0.2974117612536011
     },
     "redline_int4_spec__vs__vllm": {
       "workloads": 6,
-      "decode_speedup_geomean": 2.509705148651444,
-      "decode_speedup_min": 1.1388255119973192,
-      "decode_speedup_max": 5.758115988670511,
+      "decode_speedup_geomean": 2.7466634723797743,
+      "decode_speedup_min": 0.908777919939626,
+      "decode_speedup_max": 5.436519202002498,
       "peak_vram_reduction_mean": null
     },
     "redline_int4_spec__vs__vllm_awq_int4": {
       "workloads": 6,
-      "decode_speedup_geomean": 1.0170445120969036,
-      "decode_speedup_min": 0.5857429173350592,
-      "decode_speedup_max": 2.0995143788275943,
+      "decode_speedup_geomean": 1.11271362135421,
+      "decode_speedup_min": 0.46786297731936793,
+      "decode_speedup_max": 2.001774925258779,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_tc__vs__hf_fp16": {
+      "workloads": 6,
+      "decode_speedup_geomean": 2.883042014209606,
+      "decode_speedup_min": 2.0137340437591904,
+      "decode_speedup_max": 3.3130348023310887,
+      "peak_vram_reduction_mean": 0.4411483340074683
+    },
+    "redline_int4_tc__vs__vllm": {
+      "workloads": 6,
+      "decode_speedup_geomean": 2.324884502112535,
+      "decode_speedup_min": 1.5516665013914097,
+      "decode_speedup_max": 2.704899274889715,
+      "peak_vram_reduction_mean": null
+    },
+    "redline_int4_tc__vs__vllm_awq_int4": {
+      "workloads": 6,
+      "decode_speedup_geomean": 0.9418447798901771,
+      "decode_speedup_min": 0.7988390708215505,
+      "decode_speedup_max": 1.0059738059731458,
       "peak_vram_reduction_mean": null
     },
     "redline_int8__vs__hf_fp16": {
@@ -79,10 +121,57 @@
     },
     "redline_int8__vs__vllm_awq_int4": {
       "workloads": 6,
-      "decode_speedup_geomean": 0.5923837665375294,
-      "decode_speedup_min": 0.4540842706151802,
-      "decode_speedup_max": 0.6749243321826485,
+      "decode_speedup_geomean": 0.5921937810149374,
+      "decode_speedup_min": 0.4542887715729102,
+      "decode_speedup_max": 0.6747721227926423,
       "peak_vram_reduction_mean": null
+    }
+  },
+  "quality": {
+    "/root/models/l8b-int8.rlm": {
+      "per_task": {
+        "wikitext": 0.9999932609520688,
+        "hellaswag": 1.0057142857142858,
+        "arc_easy": 1.0,
+        "arc_challenge": 0.9772727272727273
+      },
+      "mean": 0.9957450684847704
+    },
+    "/root/work/models/l8b-int4.rlm": {
+      "per_task": {
+        "wikitext": 0.8941186759842361,
+        "hellaswag": 0.9714285714285715,
+        "arc_easy": 0.9396984924623115,
+        "arc_challenge": 0.9848484848484849
+      },
+      "mean": 0.947523556180901
+    },
+    "/root/work/models/l8b-int4-awq.rlm": {
+      "per_task": {
+        "wikitext": 0.9536954456908607,
+        "hellaswag": 0.9771428571428573,
+        "arc_easy": 0.949748743718593,
+        "arc_challenge": 0.962121212121212
+      },
+      "mean": 0.9606770646683808
+    },
+    "/root/work/models/l8b-int4-gptq.rlm": {
+      "per_task": {
+        "wikitext": 0.9285555672623642,
+        "hellaswag": 0.9885714285714285,
+        "arc_easy": 0.9447236180904522,
+        "arc_challenge": 1.0227272727272727
+      },
+      "mean": 0.9711444716628794
+    },
+    "/root/work/models/l8b-int4-awq_gptq.rlm": {
+      "per_task": {
+        "wikitext": 0.9574606772715286,
+        "hellaswag": 0.9828571428571429,
+        "arc_easy": 0.9698492462311558,
+        "arc_challenge": 0.9469696969696969
+      },
+      "mean": 0.964284190832381
     }
   }
 }

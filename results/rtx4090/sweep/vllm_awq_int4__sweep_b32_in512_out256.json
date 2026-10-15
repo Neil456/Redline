@@ -9,58 +9,58 @@
     "sampling": "greedy"
   },
   "num_requests": 32,
-  "duration_s": 3.2051761858165264,
+  "duration_s": 3.229009296745062,
   "prompt_tokens": 16384,
   "output_tokens": 8192,
-  "request_throughput_rps": 9.983850542009415,
-  "output_throughput_tok_s": 2555.8657387544104,
-  "decode_throughput_tok_s": 3359.914102699541,
+  "request_throughput_rps": 9.910160380230852,
+  "output_throughput_tok_s": 2537.001057339098,
+  "decode_throughput_tok_s": 3354.551922110991,
   "ttft_ms": {
     "count": 32,
-    "mean": 369.0257155103609,
-    "p50": 221.88732773065567,
-    "p90": 766.5250331163406,
-    "p95": 766.5815342217684,
-    "p99": 792.7450448647141,
-    "min": 42.61518642306328,
-    "max": 804.4911175966263,
-    "std": 216.55328569167182
+    "mean": 390.42227377649397,
+    "p50": 243.04339103400707,
+    "p90": 786.5082323551178,
+    "p95": 786.6244068369269,
+    "p99": 811.7681588977575,
+    "min": 80.67069575190544,
+    "max": 823.0464532971382,
+    "std": 215.44405567822318
   },
   "itl_ms": {
     "count": 8160,
-    "mean": 11.042488022597835,
-    "p50": 9.490877389907837,
-    "p90": 10.068218410015106,
-    "p95": 10.442175716161726,
-    "p99": 38.02773077040911,
-    "min": 4.949755966663361,
-    "max": 186.69500574469566,
-    "std": 16.06516373654115
+    "mean": 11.050610264818019,
+    "p50": 9.482694789767265,
+    "p90": 10.077548027038574,
+    "p95": 10.334297642111778,
+    "p99": 36.75500597804785,
+    "min": 4.822742193937302,
+    "max": 185.59934943914413,
+    "std": 16.02054305690671
   },
   "tpot_ms": {
     "count": 32,
-    "mean": 11.042488022597835,
-    "p50": 11.602731370458416,
-    "p90": 11.603144183754921,
-    "p95": 11.603205681723706,
-    "p99": 12.057512420649623,
-    "min": 9.40616950392723,
-    "max": 12.261611939060922,
-    "std": 0.8201728622054456
+    "mean": 11.050610264818019,
+    "p50": 11.613718434876088,
+    "p90": 11.614317467399673,
+    "p95": 11.614404251324196,
+    "p99": 12.022875473049343,
+    "min": 9.421205067751455,
+    "max": 12.206376826061922,
+    "std": 0.8174672862834522
   },
   "e2e_latency_ms": {
     "count": 32,
-    "mean": 3184.860161272809,
-    "p50": 3180.5818527936935,
-    "p90": 3197.8588424623013,
-    "p95": 3197.8924920782447,
-    "p99": 3201.4641185849905,
-    "min": 3169.3262308835983,
-    "max": 3203.06434109807,
-    "std": 7.5004405200445605
+    "mean": 3208.327891305089,
+    "p50": 3204.541591927409,
+    "p90": 3220.502546802163,
+    "p95": 3220.5919848755,
+    "p99": 3223.9533000811934,
+    "min": 3193.2967863976955,
+    "max": 3225.453745573759,
+    "std": 7.111650813588156
   },
   "memory": {
-    "peak_device_used_bytes": 22911647744
+    "peak_device_used_bytes": 23769448448
   },
   "speculative": {
     "enabled": false,
@@ -70,14 +70,14 @@
   "vllm_settings": {
     "model": "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
     "workload": [
-      "/workspace/wl-sweep/sweep_b1_in512_out256.json",
-      "/workspace/wl-sweep/sweep_b2_in512_out256.json",
-      "/workspace/wl-sweep/sweep_b4_in512_out256.json",
-      "/workspace/wl-sweep/sweep_b8_in512_out256.json",
-      "/workspace/wl-sweep/sweep_b16_in512_out256.json",
-      "/workspace/wl-sweep/sweep_b32_in512_out256.json"
+      "/root/work/wl-sweep/sweep_b1_in512_out256.json",
+      "/root/work/wl-sweep/sweep_b2_in512_out256.json",
+      "/root/work/wl-sweep/sweep_b4_in512_out256.json",
+      "/root/work/wl-sweep/sweep_b8_in512_out256.json",
+      "/root/work/wl-sweep/sweep_b16_in512_out256.json",
+      "/root/work/wl-sweep/sweep_b32_in512_out256.json"
     ],
-    "out": "/workspace/runs/sweep",
+    "out": "/root/work/runs/sweep",
     "quantization": null,
     "max_num_seqs": 32,
     "max_model_len": 4096,

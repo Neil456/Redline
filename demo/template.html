@@ -996,12 +996,12 @@ function renderResults() {
             h("td", {}, fmt(b.floor, 2) + " ms"), h("td", {}, fmt(b.tpot, 2) + " ms"), h("td", {}, h("b", {}, fmt(100 * b.floor / b.tpot, 0) + "%")))))),
         h("h3", { style: "margin-top:16px" }, "Quality retention vs FP16 Transformers"),
         h("table", { class: "mini" }, h("thead", {}, h("tr", {}, ...["model", "WikiText ppl", "mean retention"].map(x => h("th", {}, x)))),
-          h("tbody", {}, ...R.quality.map(x => h("tr", {}, h("td", {}, /^l8b-/.test(x.model) ? "Redline " + x.model.replace(/^l8b-|\.rlm$/g, "").toUpperCase() : x.model),
+          h("tbody", {}, ...R.quality.map(x => h("tr", {}, h("td", {}, /^l8b-/.test(x.model) ? "Redline " + x.model.replace(/^l8b-|\.rlm$/g, "").toUpperCase().replace(/-/, " ").replace(/_/g, " + ") : x.model),
             h("td", {}, x.ppl != null ? fmt(x.ppl, 3) : "–"), h("td", {}, h("b", {}, fmt(x.retention * 100, 1) + "%")))))))),
     h("ul", { class: "findings" },
-      h("li", {}, h("b", {}, "Where Redline wins: "), "batch 1–4 decode. The INT4 GEMV is 3–4% faster than vLLM's Marlin kernel, and FP16 is on par with vLLM."),
-      h("li", {}, h("b", {}, "Where it loses: "), "INT4 at batch ≥ 8. The W4A16 GEMV runs on CUDA cores and stops scaling, while Marlin uses tensor cores (3× faster at batch 32). Prefill is also about 4× slower than vLLM's at batch 32."),
-      h("li", {}, h("b", {}, "Speculative decoding: "), "1.25–1.34× at batch 1 with a 40–52% acceptance rate on WikiText prompts, but slower than plain INT4 at batch 8, where verification (40 rows) leaves the GEMV path.")));
+      h("li", {}, h("b", {}, "Where Redline wins: "), "batch 1–4 decode, where INT4 is 5–6% faster than vLLM's Marlin kernel. FP16 is on par with vLLM. Calibrated INT4 (AWQ + GPTQ) keeps 96.4% of FP16 quality."),
+      h("li", {}, h("b", {}, "Where it loses: "), "INT4 at batch 32. The tensor-core W4A16 GEMM raised it from 35% to 80% of Marlin (2,206 vs 2,755 tok/s), and steady-state steps match Marlin at batch 8. Prefill is about 5× slower than vLLM's at batch 32."),
+      h("li", {}, h("b", {}, "Speculative decoding: "), "1.16–1.19× at batch 1 with a 40–52% acceptance rate on WikiText prompts. From batch 16, verification (80+ rows) leaves the tensor-core kernel and is slower than plain INT4.")));
 }
 function drawSweep(svg, R) {
   const W = svgSize(svg), H = 230, l = 52, r = 12, t = 10, b = 58;

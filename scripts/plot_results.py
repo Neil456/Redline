@@ -95,7 +95,8 @@ def hbar_chart(path, theme, title, subtitle, rows, unit, note, extra_col=None, w
     bar_h, gap, top = 18, 12, 92
     label_w = 150
     right = 70 + (52 if extra_col else 0)
-    h = top + max(len(rows), min_rows) * (bar_h + gap) + 44
+    notes = note.split("\n") if note else []
+    h = top + max(len(rows), min_rows) * (bar_h + gap) + 44 + 15 * max(0, len(notes) - 1)
     s = Svg(width, h, t, title)
     s.text(0, 18, title, 15, "text", 600)
     s.text(0, 37, subtitle, 12, "text2")
@@ -119,8 +120,8 @@ def hbar_chart(path, theme, title, subtitle, rows, unit, note, extra_col=None, w
         s.text(sx(v) + 6, y + bar_h / 2 + 4, vl, 12, "text", 600, tabular=True)
         if extra_col:
             s.text(width, y + bar_h / 2 + 4, extra_col[1][i], 12, "text2", anchor="end", tabular=True)
-    if note:
-        s.text(0, h - 4, note, 11, "muted")
+    for i, line in enumerate(notes):
+        s.text(0, h - 4 - 15 * (len(notes) - 1 - i), line, 11, "muted")
     s.save(path)
 
 
@@ -168,17 +169,17 @@ def sweep_chart(path, theme, sweep):
             for i, v in enumerate(data[tag]):
                 s.add(f'<circle cx="{sx(i):.1f}" cy="{sy(v):.1f}" r="4" fill="{t[color]}" stroke="{t["surface"]}" '
                       f'stroke-width="2"/>')
-    # Selective end labels: the two INT4 systems, nudged apart when their batch-32 values are close.
+    # Selective end labels: the two INT4 systems. Each is a value line plus a caption below it; when
+    # the two batch-32 values are close, the lower pair is pushed down so the pairs never overlap.
     xe = sx(len(batches) - 1) + 10
     va, vr = data["vllm_awq_int4"][-1], data["redline_int4"][-1]
-    ya, yr = sy(va), sy(vr)
-    if abs(ya - yr) < 40:
-        mid = (ya + yr) / 2
-        ya, yr = (mid - 20, mid + 20) if va >= vr else (mid + 20, mid - 20)
-    s.text(xe, ya + 4, f"vLLM AWQ INT4 {va:,.0f}", 12, "text", 600, tabular=True)
-    s.text(xe, ya + 19 if ya < yr else ya - 12, "Marlin tensor cores", 11.5, "text2")
-    s.text(xe, yr + 4, f"Redline INT4 {vr:,.0f}", 12, "text", 600, tabular=True)
-    s.text(xe, yr + 19 if yr < ya else yr - 12, "tensor-core W4A16", 11.5, "text2")
+    labels = sorted([(sy(va), f"vLLM AWQ INT4 {va:,.0f}", "Marlin tensor cores"),
+                     (sy(vr), f"Redline INT4 {vr:,.0f}", "tensor-core W4A16")])
+    if labels[1][0] - labels[0][0] < 36:
+        labels[1] = (labels[0][0] + 36,) + labels[1][1:]
+    for y, value, caption in labels:
+        s.text(xe, y + 4, value, 12, "text", 600, tabular=True)
+        s.text(xe, y + 19, caption, 11.5, "text2")
     # Where Redline INT4 leads every system (and by how much over vLLM AWQ): the upper-left of the
     # plot is empty, so the note sits there with a leader line down to the batch-2 point.
     others = [tag for tag, *_ in series if not tag.startswith("redline_int4")]
@@ -229,7 +230,7 @@ def main(argv=None) -> None:
     q4 = ret.get("l8b-int4-awq_gptq.rlm", ret["l8b-int4.rlm"])
     quality = {"hf_fp16": "reference", "redline_int8": f"{ret['l8b-int8.rlm'] * 100:.1f}%",
                "redline_int4": f"{q4 * 100:.1f}%"}
-    q4_note = (f" INT4: AWQ + GPTQ ({ret['l8b-int4.rlm'] * 100:.1f}% without calibration)."
+    q4_note = (f"\nINT4 calibrated with AWQ + GPTQ ({ret['l8b-int4.rlm'] * 100:.1f}% without calibration)."
                if "l8b-int4-awq_gptq.rlm" in ret else "")
     rows3 = [(label, report.peak_gib(quick[tag][w8]), "blue" if tag.startswith("redline") else "neutral",
               f"{report.peak_gib(quick[tag][w8]):.1f}") for label, tag in mem]
@@ -238,7 +239,8 @@ def main(argv=None) -> None:
     for theme in THEMES:
         hbar_chart(os.path.join(args.out, f"decode_batch1-{theme}.svg"), theme, "Decode speed, one request",
                    "Llama 3.1 8B · RTX 4090 · tokens/s (higher is better)", rows1, "tokens / s",
-                   f"WikiText prompts, 128 in / 128 out. Speculative: 1B draft, {acc * 100:.0f}% accepted.",
+                   f"WikiText prompts, 128 in / 128 out. Speculative: 1B draft, {acc * 100:.0f}% accepted."
+                   + ("\n" if q4_note else ""),
                    min_rows=len(rows1))
         hbar_chart(os.path.join(args.out, f"memory_quality-{theme}.svg"), theme, "Peak GPU memory and quality",
                    "Batch 8, 1024-token prompts · GiB (lower is better)", rows3, "GiB",

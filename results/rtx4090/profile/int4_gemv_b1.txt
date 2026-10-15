@@ -1,0 +1,17 @@
+[redline INFO] loaded /root/work/models/l8b-int4.rlm (llama L=32 H=4096 I=14336 heads=32/8 head_dim=128 vocab=128256 weights=int4 lm_head=int8 g=128): 4.92 GiB in 1383 ms
+[redline INFO] captured CUDA graphs for batch sizes up to 1 in 24 ms
+[redline INFO] engine ready in 1887 ms; gemv_max_m=8 int8_prefill=cutlass int4_prefill=dequant int4_kernel=gemv; kv blocks=2065 (4.03 GiB); device used 9.69 GiB
+sweep_b1_in512_out256: 1 req, out 144.8 tok/s, decode 150.6 tok/s, TTFT p50 74.79 ms, ITL p50 6.66 ms (p99 6.76), peak VRAM 9.69 GiB
+  op                               ms/pass  calls/pass      %
+  target/input_ids                   0.007         1.0    0.1
+  target/embed+norm                  0.009         1.0    0.1
+  target/qkv_proj                    0.611        32.0    9.1
+  target/rope+kv_write               0.138        32.0    2.1
+  target/attention_decode            0.944        32.0   14.0
+  target/attention_prefill           0.069        32.0    1.0
+  target/o_proj                      0.444        32.0    6.6
+  target/add+rmsnorm                 0.267        64.0    4.0
+  target/gate_up+swiglu              2.372        32.0   35.3
+  target/down_proj                   1.253        32.0   18.6
+  target/lm_head                     0.558         1.0    8.3
+  target/sampling                    0.049         1.0    0.7

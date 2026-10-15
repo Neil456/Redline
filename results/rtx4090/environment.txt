@@ -2,3 +2,9 @@ NVIDIA GeForce RTX 4090, 580.126.20, 24564 MiB, 450.00 W
 vllm 0.31.0 torch 2.13.0+cu130
 hf transformers 5.19.0 torch 2.8.0+cu128
 Build cuda_12.8.r12.8/compiler.35583870_0
+
+second pod (INT4 tensor-core session):
+NVIDIA GeForce RTX 4090, 570.195.03, 24564 MiB, 450.00 W
+vcpus 48
+vllm 0.31.0 torch 2.13.0+cu129
+Cuda compilation tools, release 12.8, V12.8.93

@@ -4,24 +4,26 @@
 <text x="0.0" y="37.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Llama 3.1 8B on one RTX 4090 · 512-token prompts, 256 output tokens · tokens/s across the batch (higher is better)</text>
 <line x1="0" y1="60" x2="22" y2="60" stroke="#d95926" stroke-width="2" stroke-linecap="round"/>
 <text x="28.0" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline INT4</text>
-<line x1="125.19999999999999" y1="60" x2="147.2" y2="60" stroke="#199e70" stroke-width="2" stroke-linecap="round"/>
-<text x="153.2" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline INT8</text>
-<line x1="250.39999999999998" y1="60" x2="272.4" y2="60" stroke="#3987e5" stroke-width="2" stroke-linecap="round"/>
-<text x="278.4" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline FP16</text>
-<line x1="375.59999999999997" y1="60" x2="397.59999999999997" y2="60" stroke="#d95926" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 4"/>
-<text x="403.6" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">vLLM AWQ INT4</text>
-<line x1="507.4" y1="60" x2="529.4" y2="60" stroke="#3987e5" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 4"/>
-<text x="535.4" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">vLLM FP16</text>
-<line x1="612.8" y1="60" x2="634.8" y2="60" stroke="#6e7681" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/>
-<text x="640.8" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">HF Transformers FP16</text>
+<line x1="125.19999999999999" y1="60" x2="147.2" y2="60" stroke="#6e7681" stroke-width="2" stroke-linecap="round" stroke-dasharray="1 4"/>
+<text x="153.2" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline INT4, GEMV only</text>
+<line x1="323.0" y1="60" x2="345.0" y2="60" stroke="#199e70" stroke-width="2" stroke-linecap="round"/>
+<text x="351.0" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline INT8</text>
+<line x1="448.2" y1="60" x2="470.2" y2="60" stroke="#3987e5" stroke-width="2" stroke-linecap="round"/>
+<text x="476.2" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">Redline FP16</text>
+<line x1="573.4" y1="60" x2="595.4" y2="60" stroke="#d95926" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 4"/>
+<text x="601.4" y="64.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">vLLM AWQ INT4</text>
+<line x1="0" y1="80" x2="22" y2="80" stroke="#3987e5" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 4"/>
+<text x="28.0" y="84.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">vLLM FP16</text>
+<line x1="105.4" y1="80" x2="127.4" y2="80" stroke="#6e7681" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/>
+<text x="133.4" y="84.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">HF Transformers FP16</text>
 <line x1="52.0" y1="358.0" x2="710.0" y2="358.0" stroke="#3d444d" stroke-width="1"/>
 <text x="44.0" y="362.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">0</text>
-<line x1="52.0" y1="268.0" x2="710.0" y2="268.0" stroke="#21262d" stroke-width="1"/>
-<text x="44.0" y="272.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">1K</text>
-<line x1="52.0" y1="178.0" x2="710.0" y2="178.0" stroke="#21262d" stroke-width="1"/>
-<text x="44.0" y="182.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">2K</text>
-<line x1="52.0" y1="88.0" x2="710.0" y2="88.0" stroke="#21262d" stroke-width="1"/>
-<text x="44.0" y="92.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">3K</text>
+<line x1="52.0" y1="274.7" x2="710.0" y2="274.7" stroke="#21262d" stroke-width="1"/>
+<text x="44.0" y="278.7" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">1K</text>
+<line x1="52.0" y1="191.3" x2="710.0" y2="191.3" stroke="#21262d" stroke-width="1"/>
+<text x="44.0" y="195.3" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">2K</text>
+<line x1="52.0" y1="108.0" x2="710.0" y2="108.0" stroke="#21262d" stroke-width="1"/>
+<text x="44.0" y="112.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end" style="font-variant-numeric:tabular-nums">3K</text>
 <text x="52.0" y="376.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="middle" style="font-variant-numeric:tabular-nums">1</text>
 <text x="183.6" y="376.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="middle" style="font-variant-numeric:tabular-nums">2</text>
 <text x="315.2" y="376.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="middle" style="font-variant-numeric:tabular-nums">4</text>
@@ -29,36 +31,36 @@
 <text x="578.4" y="376.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="middle" style="font-variant-numeric:tabular-nums">16</text>
 <text x="710.0" y="376.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="middle" style="font-variant-numeric:tabular-nums">32</text>
 <text x="710.0" y="392.0" font-size="11" font-weight="400" fill="#6e7681" text-anchor="end">batch size (concurrent sequences)</text>
-<polyline points="52.0,353.5 183.6,349.3 315.2,340.9 446.8,325.2 578.4,297.6 710.0,259.6" fill="none" stroke="#6e7681" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2 4"/>
-<polyline points="52.0,352.6 183.6,347.4 315.2,337.0 446.8,316.7 578.4,282.5 710.0,230.3" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 4"/>
-<polyline points="52.0,343.2 183.6,329.3 315.2,301.8 446.8,251.7 578.4,186.2 710.0,109.8" fill="none" stroke="#d95926" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 4"/>
-<polyline points="52.0,352.7 183.6,347.6 315.2,337.3 446.8,318.4 578.4,284.4 710.0,237.7" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="52.0" cy="352.7" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<circle cx="183.6" cy="347.6" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<circle cx="315.2" cy="337.3" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<circle cx="446.8" cy="318.4" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<circle cx="578.4" cy="284.4" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<circle cx="710.0" cy="237.7" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
-<polyline points="52.0,348.3 183.6,338.7 315.2,320.1 446.8,289.8 578.4,280.0 710.0,234.5" fill="none" stroke="#199e70" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="52.0" cy="348.3" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<circle cx="183.6" cy="338.7" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<circle cx="315.2" cy="320.1" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<circle cx="446.8" cy="289.8" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<circle cx="578.4" cy="280.0" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<circle cx="710.0" cy="234.5" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
-<polyline points="52.0,342.8 183.6,328.0 315.2,300.2 446.8,278.6 578.4,275.0 710.0,274.8" fill="none" stroke="#d95926" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="52.0" cy="342.8" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<circle cx="183.6" cy="328.0" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<circle cx="315.2" cy="300.2" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<circle cx="446.8" cy="278.6" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<circle cx="578.4" cy="275.0" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<circle cx="710.0" cy="274.8" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
-<text x="720.0" y="113.8" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start" style="font-variant-numeric:tabular-nums">vLLM AWQ INT4 2,758</text>
-<text x="720.0" y="128.8" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start">tensor-core GEMM</text>
-<text x="720.0" y="278.8" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start" style="font-variant-numeric:tabular-nums">Redline INT4 925</text>
-<text x="720.0" y="293.8" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start">CUDA-core GEMV,</text>
-<text x="720.0" y="307.8" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start">saturates past batch 8</text>
-<line x1="183.6" y1="155.4" x2="183.6" y2="320.0" stroke="#3d444d" stroke-width="1"/>
-<text x="64.0" y="133.4" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start">Batch 1–4: Redline INT4 is the fastest system</text>
-<text x="64.0" y="148.4" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">3–4% ahead of vLLM's Marlin kernel</text>
+<polyline points="52.0,353.8 183.6,349.9 315.2,342.2 446.8,327.6 578.4,302.1 710.0,266.9" fill="none" stroke="#6e7681" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2 4"/>
+<polyline points="52.0,353.0 183.6,348.2 315.2,338.5 446.8,319.7 578.4,288.1 710.0,239.8" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 4"/>
+<polyline points="52.0,344.3 183.6,331.3 315.2,305.9 446.8,259.6 578.4,199.0 710.0,128.4" fill="none" stroke="#d95926" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="6 4"/>
+<polyline points="52.0,353.1 183.6,348.4 315.2,338.9 446.8,321.4 578.4,289.9 710.0,246.7" fill="none" stroke="#3987e5" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="52.0" cy="353.1" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<circle cx="183.6" cy="348.4" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<circle cx="315.2" cy="338.9" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<circle cx="446.8" cy="321.4" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<circle cx="578.4" cy="289.9" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<circle cx="710.0" cy="246.7" r="4" fill="#3987e5" stroke="#0d1117" stroke-width="2"/>
+<polyline points="52.0,349.0 183.6,340.2 315.2,322.9 446.8,294.9 578.4,285.8 710.0,243.7" fill="none" stroke="#199e70" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="52.0" cy="349.0" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<circle cx="183.6" cy="340.2" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<circle cx="315.2" cy="322.9" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<circle cx="446.8" cy="294.9" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<circle cx="578.4" cy="285.8" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<circle cx="710.0" cy="243.7" r="4" fill="#199e70" stroke="#0d1117" stroke-width="2"/>
+<polyline points="52.0,343.7 183.6,329.7 315.2,303.5 446.8,283.2 578.4,278.8 710.0,278.6" fill="none" stroke="#6e7681" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1 4"/>
+<polyline points="52.0,343.7 183.6,329.7 315.2,303.5 446.8,265.7 578.4,207.3 710.0,174.2" fill="none" stroke="#d95926" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="52.0" cy="343.7" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<circle cx="183.6" cy="329.7" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<circle cx="315.2" cy="303.5" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<circle cx="446.8" cy="265.7" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<circle cx="578.4" cy="207.3" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<circle cx="710.0" cy="174.2" r="4" fill="#d95926" stroke="#0d1117" stroke-width="2"/>
+<text x="720.0" y="132.4" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start" style="font-variant-numeric:tabular-nums">vLLM AWQ INT4 2,755</text>
+<text x="720.0" y="147.4" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start">Marlin tensor cores</text>
+<text x="720.0" y="178.2" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start" style="font-variant-numeric:tabular-nums">Redline INT4 2,206</text>
+<text x="720.0" y="193.2" font-size="11.5" font-weight="400" fill="#9198a1" text-anchor="start">tensor-core W4A16</text>
+<line x1="183.6" y1="171.0" x2="183.6" y2="321.7" stroke="#3d444d" stroke-width="1"/>
+<text x="64.0" y="149.0" font-size="12" font-weight="600" fill="#f0f6fc" text-anchor="start">Batch 1–4: Redline INT4 is the fastest system</text>
+<text x="64.0" y="164.0" font-size="12" font-weight="400" fill="#9198a1" text-anchor="start">5–6% ahead of vLLM's Marlin kernel</text>
 </svg>

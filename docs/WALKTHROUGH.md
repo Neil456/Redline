@@ -17,7 +17,9 @@ Plan on about 8–10 minutes. Spend longer wherever the interviewer digs in.
 > - INT8 decodes 81% faster than Transformers FP16 with 43% less peak memory
 >   and 99.6% quality retention.
 > - FP16 is on par with vLLM.
-> - At batch 1, INT4 beats vLLM's Marlin kernel.
+> - INT4 beats vLLM's Marlin kernel by 5–6% at batch 1–4. I wrote a
+>   tensor-core INT4 kernel that took batch 32 from 35% to 80% of Marlin.
+> - AWQ + GPTQ calibration cuts INT4's perplexity loss from 11.8% to 4.4%.
 
 ## Talk track by section
 
@@ -74,18 +76,31 @@ the CPU.** Sampled ids feed the next step on the device.
 Everything in this section was measured on one RTX 4090 (`results/rtx4090/`).
 The baselines ran the same workload files.
 - **Batch sweep chart.** Hover each batch size.
-  - Below batch 8, solid Redline lines sit at or above the dashed baselines.
-  - Redline INT4 (red) flattens after batch 8 while vLLM AWQ keeps climbing.
-    Say why: the W4A16 GEMV runs on CUDA cores. Up to batch 8 it is
-    memory-bound, beyond that it is FMA- and L1-bound. Marlin uses tensor cores.
-    This is the most honest and interesting slide: you know exactly where the
-    design stops scaling and what fixes it.
+  - Batch 1–4: Redline INT4 is the fastest system, 5–6% ahead of vLLM AWQ.
+    That is the CUDA-core GEMV, with SwiGLU fused into the gate/up projection.
+  - The dotted grey line is where INT4 used to stop: the GEMV flattens at
+    about 950 tok/s after batch 8. Explain why: it multiplies every weight
+    by every row on CUDA cores, so past ~8 rows it is FMA- and L1-bound, not
+    memory-bound.
+  - The solid red line is the fix: a W4A16 GEMM on tensor cores
+    (`mma.sync`), 2,206 tok/s at batch 32 (80% of Marlin, up from 35%). In
+    steady-state decode steps it matches Marlin at batch 8.
+  - Name the remaining gap yourself. The kernel loads activation fragments
+    per warp from L1 instead of staging them in shared memory the way Marlin
+    does. Redline's slower prefill also stretches the first steps of each
+    batch. Knowing exactly where it stops, with a profile to show it, is the
+    strongest slide.
 - **Bandwidth table.** At batch 1, FP16 runs at 89% of DRAM bandwidth. INT4
-  reaches only 73% because the fixed per-step work (attention, norms, sampling,
+  reaches 74% because the fixed per-step work (attention, norms, sampling,
   launches) weighs more once the weights shrink 3.5×.
-- **Quality.** INT8 is lossless in practice (WikiText perplexity 8.108 for both).
-  INT4 RTN g128 costs about 12% perplexity on Llama 3. AWQ/GPTQ calibration is
-  the known fix.
+- **Quality.** INT8 is lossless in practice (WikiText perplexity 8.108 for
+  both). INT4 round-to-nearest costs 11.8% perplexity on Llama 3. The
+  converter's calibration fixes most of that:
+  - AWQ: activation-aware per-channel scales, folded into the RMSNorm.
+  - GPTQ: rounding error pushed onto the not-yet-quantized columns through
+    the inverse Hessian.
+  - Together the loss drops to 4.4% (mean retention 94.8% → 96.4%), at the
+    same speed and file size.
 - **Traces.** Switch between the three recorded runs:
   - *INT4 weights:* the batch fills to about 29 sequences and the queue never
     builds.
@@ -153,9 +168,9 @@ still follows the target distribution.
 **Why not just use vLLM?** The point was control and understanding every
 byte on the critical path. vLLM is one of the baselines, and the benchmark
 harness runs both on identical workloads. Measured: FP16 decode is within 3%
-of vLLM. Redline's INT4 GEMV is 3–4% faster than vLLM's Marlin at batch 1–4
-and up to 3× slower at batch 32. vLLM's prefill is about 4× faster at large
-batch.
+of vLLM. Redline INT4 is 5–6% faster than vLLM's Marlin at batch 1–4, level at
+batch 8 in steady state, and 20% behind at batch 32. vLLM's prefill is about
+5× faster at large batch.
 
 **How did you make the comparison fair?** Every system reads the same
 workload JSON: identical prompt token ids, output lengths, greedy decoding,
@@ -173,13 +188,53 @@ failures were one bug: cuBLASLt has no algorithm for an FP16 bias epilogue with
 FP32 output. Running real checkpoints found one more bug in the Python binding,
 and the benchmarks found the INT4 scaling cliff.
 
+**How does the tensor-core INT4 kernel work?** Point at the two code excerpts:
+- **Layout.** Weights are re-laid out once at load, so each lane's 16-byte
+  load is exactly its B fragments for eight 8-column tiles.
+- **Dequantization.** A nibble becomes an fp16 number by OR-ing it into the
+  mantissa of 1024.0 (`lop3`) and subtracting 1024. One `hfma2` then applies
+  the group scale and offset.
+- **Pipeline.** The next chunk's weights load while this one computes.
+- **Split-K.** K is split across CTAs to fill the GPU. The last CTA to finish
+  a column block (an atomic ticket) adds the partials in a fixed order. The
+  split count depends only on the layer shape, so a sequence gets the same
+  logits whatever batch it is in.
+- **Fused SwiGLU.** Gate and up columns are interleaved, so the epilogue
+  writes SiLU(gate)·up directly.
+
+**How did you tune it without Nsight Compute?** The container had no
+performance-counter access, so I added a per-op profiler (CUDA events between
+ops) and ran controlled A/B runs on the pod.
+- The profile showed a constant 5–8 µs extra per GEMM at batch 1. That was
+  the split-K reduction: one dependent L2 load chain per output. Issuing all
+  of a split's loads together fixed it.
+- A sweep of the split target found one CTA per SM best at every batch size.
+- The profile then showed the INT8 lm_head at 11% of the step at batch 32.
+  Doubling its rows per GEMV launch halved that.
+
+**What went wrong in the second GPU session?** Three things, all caught by
+controls rather than by luck:
+- **Wrong kernel at batch 1.** The first INT4 sweep was 12% slower at batch
+  1. `auto` picks the weight layout once per engine, and an engine sized for
+  32 sequences had chosen tensor cores. Running the GEMV-only mode on the same
+  pod separated "slower machine" from "wrong kernel".
+- **vLLM wouldn't start.** The pod's driver predated CUDA 13. I installed
+  vLLM's CUDA 12.9 build and ran it on the same pod; it reproduced the first
+  pod's numbers to 0.1 ms.
+- **A metric mix-up.** For a while I compared vLLM's per-step ITL against the
+  report's TPOT. Checking the raw JSON caught it before the numbers went into
+  the write-up.
+
 **What would you do next?** In order of measured impact:
-1. A tensor-core W4A16 GEMM (Marlin-style, or build the TensorRT-LLM backend)
-   for INT4 at batch ≥ 8.
-2. A tensor-core flash-attention prefill kernel for TTFT.
-3. Calibrated INT4 (AWQ/GPTQ) to recover the 5% quality gap.
-4. Turning speculative decoding off adaptively at higher batch, where it
-   currently loses.
+1. Stage activations through shared memory in the INT4 GEMM (`cp.async` +
+   `ldmatrix`, more warps per activation tile) to close the last 20% to Marlin
+   at batch 32.
+2. A tensor-core flash-attention prefill kernel. Prefill is 5× slower than
+   vLLM's and also stretches the first decode steps of a batch.
+3. Decode attention at large batch: it is now the second-largest item in the
+   batch-32 profile.
+4. Keep speculative verification on the tensor-core kernel past 64 rows, and
+   turn speculation off adaptively at high batch, where it currently loses.
 
 ## Producing traces for section 06
 

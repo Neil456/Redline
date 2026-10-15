@@ -124,6 +124,7 @@ SYSTEMS = [  # tag, label, is_redline
     ("redline_fp16", "Redline FP16", True), ("redline_int8", "Redline INT8", True),
     ("redline_int4", "Redline INT4", True), ("hf_fp16", "HF Transformers FP16", False),
     ("vllm", "vLLM FP16", False), ("vllm_awq_int4", "vLLM AWQ INT4", False),
+    ("redline_int4_gemv", "Redline INT4, GEMV only (before tensor cores)", False),
 ]
 
 
